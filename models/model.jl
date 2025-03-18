@@ -423,6 +423,7 @@ end
 
 function rack_placement(
     DC::DataCenter,
+    Sim::HistoricalDemandSimulator,
     T::Int,
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int}, 
