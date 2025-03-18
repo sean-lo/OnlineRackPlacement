@@ -12,33 +12,11 @@ using StatsBase
 include("$(@__DIR__)/build_datacenter.jl")
 include("$(@__DIR__)/simulate_batch.jl")
 include("$(@__DIR__)/model.jl")
-
+include("$(@__DIR__)/read_demand.jl")
 
 DC = build_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
 Sim = HistoricalDemandSimulator("$(@__DIR__)/../data/syntheticDemandSimulation")
-
-demand_dir = "$(@__DIR__)/../data/demandTrajectories"
-demand_data = CSV.read(joinpath(demand_dir, "150res_1.csv"), DataFrame)
-sort!(demand_data, :resID)
-
-
-CONST_BATCH_SIZE = 10
-T = Int(ceil(nrow(demand_data) / CONST_BATCH_SIZE))
-batches = Dict(
-    t => Dict(
-        "seed" => 0,
-        "size" => demand_data[inds, :size],
-        "cooling" => demand_data[inds, :coolingEach],
-        "power" => demand_data[inds, :powerEach],
-        "reward" => ones(length(demand_data[inds, :resID])),
-    )
-    for (t, inds) in enumerate(Iterators.partition(1:nrow(demand_data), CONST_BATCH_SIZE))
-)
-batch_sizes = Dict(
-    t => CONST_BATCH_SIZE
-    for t in 1:T
-)
-
+batches, batch_sizes = read_demand("$(@__DIR__)/../data/demandTrajectories/150res_1.csv")
 
 oracle_result = build_solve_oracle_model(batches, batch_sizes, DC)
 println(oracle_result["x"])
