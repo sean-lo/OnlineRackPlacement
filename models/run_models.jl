@@ -7,8 +7,7 @@ using Glob
 using DataFrames
 using JuMP
 using Gurobi
-
-
+using StatsBase
 
 include("$(@__DIR__)/build_datacenter.jl")
 include("$(@__DIR__)/simulate_batch.jl")
@@ -16,8 +15,6 @@ include("$(@__DIR__)/model.jl")
 
 
 DC = build_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
-
-
 Sim = HistoricalDemandSimulator("$(@__DIR__)/../data/syntheticDemandSimulation")
 
 demand_dir = "$(@__DIR__)/../data/demandTrajectories"
@@ -49,12 +46,9 @@ println(oracle_result["y"])
 println(oracle_result["objective"])
 println(oracle_result["time_taken"])
 
-
-
 SSOA_result = rack_placement(DC, Sim, T, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 0)
 SAA_result = rack_placement(DC, Sim, T, batches, batch_sizes, strategy = "SAA", S = 5, seed = 0)
 MPC_result = rack_placement(DC, Sim, T, batches, batch_sizes, strategy = "MPC")
-
 
 SSOA_result["objective"]
 SAA_result["objective"]
