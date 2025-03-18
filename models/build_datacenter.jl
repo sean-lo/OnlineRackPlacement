@@ -84,14 +84,16 @@ function build_datacenter(
 )
 
     data = read_CSVs_from_dir(input_dir)
+    used_keys = ["powerHierarchy", "czTiles", "resourceProfiles", "tiles", "objectCapacities"]
 
     missing_keys = [
-        key for key in ["powerHierarchy", "czTiles", "resourceProfiles", "tiles", "objectCapacities"]
+        key for key in used_keys
             if !haskey(data, key)
     ]
     if !isempty(missing_keys)
         error("Missing required data: " * join(missing_keys, ", "))
     end
+    data = Dict(key => data[key] for key in used_keys)
 
     power_IDs = setdiff(
         unique(vcat(
