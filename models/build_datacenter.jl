@@ -67,8 +67,6 @@ struct DataCenter
     power_parent_map::Dict{Int, Int}
     power_children_map::Dict{Int, Vector{Int}}
     power_tilegroups_map::Dict{Int, Vector{Int}}
-    power_isleaf::Dict{Int, Bool}
-    power_istop::Dict{Int, Bool}
     power_descendants_map::Dict{Int, Vector{Int}}
 
     # capacities - no active demands
@@ -259,8 +257,7 @@ function build_datacenter(
         tile_position_map,
         row_tilegroups_map, tilegroup_row_map,
         cooling_tiles_map, cooling_tilegroups_map,
-        power_parent_map, power_children_map, power_tilegroups_map,
-        power_isleaf, power_istop, power_descendants_map,
+        power_parent_map, power_children_map, power_tilegroups_map,power_descendants_map,
         power_capacity, failpower_capacity, roompower_capacity,
         cooling_capacity, roomcooling_capacity,
     )
