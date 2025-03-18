@@ -46,9 +46,9 @@ println(oracle_result["y"])
 println(oracle_result["objective"])
 println(oracle_result["time_taken"])
 
-SSOA_result = rack_placement(DC, Sim, T, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 0)
-SAA_result = rack_placement(DC, Sim, T, batches, batch_sizes, strategy = "SAA", S = 5, seed = 0)
-MPC_result = rack_placement(DC, Sim, T, batches, batch_sizes, strategy = "MPC")
+SSOA_result = rack_placement(DC, Sim, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 0)
+SAA_result = rack_placement(DC, Sim, batches, batch_sizes, strategy = "SAA", S = 5, seed = 0)
+MPC_result = rack_placement(DC, Sim, batches, batch_sizes, strategy = "MPC")
 
 SSOA_result["objective"]
 SAA_result["objective"]

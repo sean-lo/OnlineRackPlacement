@@ -19,6 +19,7 @@ function build_solve_oracle_model(
     end
 
     start_time = time()
+    T = length(batches)
 
     model = Model(() -> Gurobi.Optimizer(env))
     set_optimizer_attribute(model, "MIPGap", 1e-4)
@@ -424,7 +425,6 @@ end
 function rack_placement(
     DC::DataCenter,
     Sim::HistoricalDemandSimulator,
-    T::Int,
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int}, 
     ;
@@ -448,6 +448,8 @@ function rack_placement(
     end
 
     start_time = time()
+
+    T = length(batches)
 
     x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
     y_fixed = Dict{Tuple{Int, Int, Int}, Int}()
