@@ -86,7 +86,7 @@ function build_datacenter(
     data = read_CSVs_from_dir(input_dir)
 
     missing_keys = [
-        key for key in ["powerHierarchy", "czTiles", "resourceProfiles", "tiles", "pdTiles", "objectCapacities"]
+        key for key in ["powerHierarchy", "czTiles", "resourceProfiles", "tiles", "objectCapacities"]
             if !haskey(data, key)
     ]
     if !isempty(missing_keys)
@@ -197,8 +197,6 @@ function build_datacenter(
         ]
         for x in power_IDs
     )
-    power_isleaf = Dict(data["pdTiles"][!, :powerDeviceID] .=> data["pdTiles"][!, :leafDevice])
-    power_istop = Dict(data["pdTiles"][!, :powerDeviceID] .=> data["pdTiles"][!, :topLevelDevice])
 
     power_descendants_map = Dict{Int, Vector{Int}}()
     for pd_ID in power_IDs
