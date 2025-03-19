@@ -36,6 +36,7 @@ Data structure for immutable attributes.
 * `power_room_map` - dict of room IDs for each power device. (power_ID => room_ID)
 
 #### Parameters
+* `tilegroup_space_capacity` - dict of tilegroup space capacities
 * `power_capacity` - dict of PD power capacities
 * `failpower_capacity` - dict PD failover power capacities when root power device fails
 * `roompower_capacity` - dict of room power capacities
@@ -73,7 +74,7 @@ struct DataCenter
     power_room_map::Dict{Int, Int}
 
     # capacities - no active demands
-    row_capacity::Dict{Int, Float64}
+    tilegroup_space_capacity::Dict{Int, Float64}
     power_capacity::Dict{Int, Float64}
     failpower_capacity::Dict{Int, Float64}
     roompower_capacity::Dict{Int, Float64}
@@ -249,6 +250,7 @@ function build_datacenter(
     power_room_map = Dict(p => m for (m, p_list) in room_power_map for p in p_list)
 
     # Capacities
+    tilegroup_space_capacity = Dict(j => length(tilegroup_tiles_map[j]) for j in tilegroup_IDs)
     row_capacity = Dict(r => 20 for r in row_IDs)
     power_capacity = (
         data["objectCapacities"]
@@ -299,7 +301,7 @@ function build_datacenter(
         room_tilegroups_map,
         room_toppower_map, toppower_room_map,
         room_power_map, power_room_map,
-        row_capacity,
+        tilegroup_space_capacity,
         power_capacity, failpower_capacity, roompower_capacity,
         cooling_capacity, roomcooling_capacity,
     )

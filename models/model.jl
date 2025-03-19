@@ -189,50 +189,50 @@ function build_solve_incremental_model(
     # Space
     @expression(
         model, 
-        space_now[r in DC.row_IDs],
+        space_now[j in DC.tilegroup_IDs],
         sum(
             x_fixed[(τ,i,j)]
-            for τ in 1:t-1, i in 1:batch_sizes[τ], j in DC.row_tilegroups_map[r]
+            for τ in 1:t-1, i in 1:batch_sizes[τ]
                 if (τ,i,j) in keys(x_fixed)
         )
         + sum(
             x_now[i,j]
-            for i in 1:batch_sizes[t], j in DC.row_tilegroups_map[r]
+            for i in 1:batch_sizes[t]
         )
     )
     if strategy == "SAA"
         @expression(
             model, 
-            space_next[r in DC.row_IDs, s in 1:S],
+            space_next[j in DC.tilegroup_IDs, s in 1:S],
             sum(
                 x_next[(τ,s,i,j)]
-                for τ in t+1:T, s in 1:S, i in 1:sim_batch_sizes[(τ,s)], j in DC.row_tilegroups_map[r]
+                for τ in t+1:T, s in 1:S, i in 1:sim_batch_sizes[(τ,s)]
             )
         )
         @constraint(
             model, 
-            [r in DC.row_IDs, s in 1:S],
-            space_now[r] + space_next[r,s] ≤ DC.row_capacity[r]
+            [j in DC.tilegroup_IDs, s in 1:S],
+            space_now[j] + space_next[j,s] ≤ DC.tilegroup_space_capacity[j]
         )
     elseif strategy in ["SSOA", "MPC"]
         @expression(
             model, 
-            space_next[r in DC.row_IDs],
+            space_next[j in DC.tilegroup_IDs],
             sum(
                 x_next[(τ,i,j)]
-                for τ in t+1:T, i in 1:sim_batch_sizes[τ], j in DC.row_tilegroups_map[r]
+                for τ in t+1:T, i in 1:sim_batch_sizes[τ]
             )
         )
         @constraint(
             model, 
-            [r in DC.row_IDs],
-            space_now[r] + space_next[r] ≤ DC.row_capacity[r]
+            [j in DC.tilegroup_IDs],
+            space_now[j] + space_next[j] ≤ DC.tilegroup_space_capacity[j]
         )
     else
         @constraint(
             model, 
-            [r in DC.row_IDs],
-            space_now[r] ≤ DC.row_capacity[r]
+            [j in DC.tilegroup_IDs],
+            space_now[j] ≤ DC.tilegroup_space_capacity[j]
         )
     end
 
