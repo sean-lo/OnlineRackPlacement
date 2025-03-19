@@ -1,5 +1,5 @@
 include("$(@__DIR__)/utils.jl")
-
+include("$(@__DIR__)/parameters.jl")
 function _qcdf_interpolated(
     quantiles::Vector{Float64},
     values::Vector{T},
@@ -66,6 +66,7 @@ end
 
 function simulate_demand(
     Sim::HistoricalDemandSimulator,
+    RCoeffs::RackPlacementCoefficients,
     batch_size::Int = 1,
     seed::Union{Int, Nothing} = nothing,
 )
@@ -89,12 +90,13 @@ function simulate_demand(
         "size" => size_vals,
         "power" => power_vals,
         "cooling" => cooling_vals,
-        "reward" => ones(batch_size),
+        "reward" => fill(RCoeffs.placement_reward, batch_size),
     )
 end
 
 function mean_demand(
     Sim::HistoricalDemandSimulator,
+    RCoeffs::RackPlacementCoefficients,
     batch_size::Int,
 )
     return Dict(
@@ -102,7 +104,7 @@ function mean_demand(
         "size" => [Sim.size_mean for _ in 1:batch_size],
         "power" => [Sim.power_mean for _ in 1:batch_size],
         "cooling" => [Sim.cooling_mean for _ in 1:batch_size],
-        "reward" => ones(batch_size),
+        "reward" => fill(RCoeffs.placement_reward, batch_size),
     )
 end
 
@@ -110,6 +112,7 @@ end
 function simulate_batches(
     strategy::String,
     Sim::HistoricalDemandSimulator,
+    RCoeffs::RackPlacementCoefficients,
     t::Int,
     T::Int,
     batch_sizes::Dict{Int, Int},
@@ -125,7 +128,7 @@ function simulate_batches(
     Random.seed!(seed)
     if strategy == "SSOA"
         sim_batches = Dict(
-            τ => simulate_demand(Sim, batch_sizes[τ])
+            τ => simulate_demand(Sim, RCoeffs, batch_sizes[τ])
             for τ in t+1:T
         )
         sim_batch_sizes = Dict(
@@ -134,7 +137,7 @@ function simulate_batches(
         )
     elseif strategy == "SAA"
         sim_batches = Dict(
-            (τ, s) => simulate_demand(Sim, batch_sizes[τ])
+            (τ, s) => simulate_demand(Sim, RCoeffs, batch_sizes[τ])
             for τ in t+1:T, s in 1:S
         )
         sim_batch_sizes = Dict(
@@ -143,7 +146,7 @@ function simulate_batches(
         )
     elseif strategy == "MPC"
         sim_batches = Dict(
-            τ => mean_demand(Sim, batch_sizes[τ])
+            τ => mean_demand(Sim, RCoeffs, batch_sizes[τ])
             for τ in t+1:T
         )
         sim_batch_sizes = Dict(

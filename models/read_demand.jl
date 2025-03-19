@@ -1,7 +1,9 @@
 const CONST_BATCH_SIZE = 10
+include("$(@__DIR__)/parameters.jl")
 
 function read_demand(
     demand_fp::String,
+    RCoeffs::RackPlacementCoefficients,
     use_batching::Bool = false,
     batch_size::Int = CONST_BATCH_SIZE,
 )
@@ -15,7 +17,7 @@ function read_demand(
                 "size" => demand_data[demand_data[!, :batchID] .== t, :size],
                 "cooling" => demand_data[demand_data[!, :batchID] .== t, :coolingEach],
                 "power" => demand_data[demand_data[!, :batchID] .== t, :powerEach],
-                "reward" => ones(length(demand_data[demand_data[!, :batchID] .== t, :resID])),
+                "reward" => fill(RCoeffs.placement_reward, length(demand_data[demand_data[!, :batchID] .== t, :resID])),
             )
         end
     else
@@ -26,7 +28,7 @@ function read_demand(
                 "size" => demand_data[inds, :size],
                 "cooling" => demand_data[inds, :coolingEach],
                 "power" => demand_data[inds, :powerEach],
-                "reward" => ones(length(demand_data[inds, :resID])),
+                "reward" => fill(RCoeffs.placement_reward, length(demand_data[inds, :resID])),
             )
             for (t, inds) in enumerate(Iterators.partition(1:nrow(demand_data), batch_size))
         )

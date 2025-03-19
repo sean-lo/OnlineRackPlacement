@@ -418,13 +418,13 @@ end
 function rack_placement(
     DC::DataCenter,
     Sim::HistoricalDemandSimulator,
+    RCoeffs::RackPlacementCoefficients,
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int}, 
     ;
     env::Union{Gurobi.Env, Nothing} = nothing,
     strategy::String = "SSOA",
     S::Int = 1, # Number of sample paths
-    gamma::Float64 = 1.0,
     seed::Union{Int, Nothing} = nothing,
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 300,
@@ -454,7 +454,7 @@ function rack_placement(
         # Simulate
         if strategy in ["SSOA", "SAA", "MPC"]
             sim_batches, sim_batch_sizes = simulate_batches(
-                strategy, Sim,
+                strategy, Sim, RCoeffs,
                 t, T,
                 batch_sizes, S,
             )
@@ -475,7 +475,7 @@ function rack_placement(
             sim_batches = sim_batches,
             sim_batch_sizes = sim_batch_sizes,
             S = S,
-            gamma = gamma,
+            gamma = RCoeffs.discount_factor,
             env = env,
             MIPGap = MIPGap,
             time_limit_sec = max(
