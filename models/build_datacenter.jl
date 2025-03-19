@@ -29,6 +29,11 @@ Data structure for immutable attributes.
 * `power_parent_map` - dict of parent IDs for each power device ID, 0 if none (pd => pd's parent)
 * `power_children_map` - dict of child power device IDs for each power device. (pd => [child_pd_IDs])
 * `power_tilegroups_map` - dict of tile group IDs served by each power device. (pd => [resourceProfileIDs])
+* `room_tilegroups_map` - dict of tile group IDs for each room. (room_ID => [resourceProfileIDs])
+* `room_toppower_map` - dict of top power device IDs for each room. (room_ID => [toppower_IDs])
+* `toppower_room_map` - dict of room IDs for each top power device. (toppower_ID => room_ID)
+* `room_power_map` - dict of power device IDs for each room. (room_ID => [power_IDs])
+* `power_room_map` - dict of room IDs for each power device. (power_ID => room_ID)
 
 #### Parameters
 * `power_capacity` - dict of PD power capacities
@@ -61,8 +66,14 @@ struct DataCenter
     power_children_map::Dict{Int, Vector{Int}}
     power_tilegroups_map::Dict{Int, Vector{Int}}
     power_descendants_map::Dict{Int, Vector{Int}}
+    room_tilegroups_map::Dict{Int, Vector{Int}}
+    room_toppower_map::Dict{Int, Vector{Int}}
+    toppower_room_map::Dict{Int, Int}
+    room_power_map::Dict{Int, Vector{Int}}
+    power_room_map::Dict{Int, Int}
 
     # capacities - no active demands
+    row_capacity::Dict{Int, Float64}
     power_capacity::Dict{Int, Float64}
     failpower_capacity::Dict{Int, Float64}
     roompower_capacity::Dict{Int, Float64}
@@ -204,7 +215,41 @@ function build_datacenter(
         end
     end
 
+    room_tilegroups_map = Dict(
+        m => unique([
+            j
+            for r in room_rows_map[m]
+                for j in row_tilegroups_map[r]
+        ])
+        for m in room_IDs
+    )
+    room_toppower_map = Dict(
+        m => [
+            p 
+            for p in toppower_IDs
+                if length(intersect(
+                    power_tilegroups_map[p],
+                    room_tilegroups_map[m]
+                )) > 0
+        ]
+        for m in room_IDs
+    )
+    toppower_room_map = Dict(p => m for (m, p_list) in room_toppower_map for p in p_list)
+    room_power_map = Dict(
+        m => [
+            p 
+            for p in power_IDs
+                if length(intersect(
+                    power_tilegroups_map[p],
+                    room_tilegroups_map[m]
+                )) > 0
+        ]
+        for m in room_IDs
+    )
+    power_room_map = Dict(p => m for (m, p_list) in room_power_map for p in p_list)
+
     # Capacities
+    row_capacity = Dict(r => 20 for r in row_IDs)
     power_capacity = (
         data["objectCapacities"]
         |> x -> filter(r -> r[:objectType] == "pd", x)
@@ -251,7 +296,15 @@ function build_datacenter(
         row_tilegroups_map, tilegroup_row_map,
         cooling_tiles_map, cooling_tilegroups_map,
         power_parent_map, power_children_map, power_tilegroups_map,power_descendants_map,
+        room_tilegroups_map,
+        room_toppower_map, toppower_room_map,
+        room_power_map, power_room_map,
+        row_capacity,
         power_capacity, failpower_capacity, roompower_capacity,
         cooling_capacity, roomcooling_capacity,
     )
 end
+
+DC = build_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
+
+DC.room_toppower_map[1]
