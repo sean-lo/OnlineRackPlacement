@@ -10,6 +10,7 @@ using Gurobi
 using Parameters
 using Random
 using StatsBase
+using JSON
 
 include("$(@__DIR__)/parameters.jl")
 include("$(@__DIR__)/build_datacenter.jl")
@@ -19,9 +20,10 @@ include("$(@__DIR__)/read_demand.jl")
 
 
 ### Filepaths ### 
-datacenter_dir = "$(@__DIR__)/../data/contiguousDataCenterNew"
-distr_dir = "$(@__DIR__)/../data/syntheticDemandSimulation"
-demand_fp = "$(@__DIR__)/../data/demandTrajectories/150res_1.csv"
+fps = JSON.parsefile("$(@__DIR__)/../filepaths.json")
+datacenter_dir = fps["datacenter_dir"]
+distr_dir = fps["distr_dir"]
+demand_fp = fps["demand_fp"]
 ### 
 
 RCoeffs = RackPlacementCoefficients(
