@@ -427,7 +427,7 @@ function rack_placement(
     S::Int = 1, # Number of sample paths
     seed::Union{Int, Nothing} = nothing,
     MIPGap::Float64 = 1e-4,
-    time_limit_sec = 300,
+    time_limit_sec = 0,
     time_limit_sec_per_iteration = 60,
     verbose::Bool = true,
 )

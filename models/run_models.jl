@@ -17,11 +17,20 @@ include("$(@__DIR__)/simulate_batch.jl")
 include("$(@__DIR__)/model.jl")
 include("$(@__DIR__)/read_demand.jl")
 
-RCoeffs = RackPlacementCoefficients()
 
-DC = build_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
-Sim = HistoricalDemandSimulator("$(@__DIR__)/../data/syntheticDemandSimulation")
-batches, batch_sizes = read_demand("$(@__DIR__)/../data/demandTrajectories/150res_1.csv", RCoeffs)
+### Filepaths ### 
+datacenter_dir = "$(@__DIR__)/../data/contiguousDataCenterNew"
+distr_dir = "$(@__DIR__)/../data/syntheticDemandSimulation"
+demand_fp = "$(@__DIR__)/../data/demandTrajectories/150res_1.csv"
+### 
+
+RCoeffs = RackPlacementCoefficients(
+    discount_factor = 0.1,
+)
+
+DC = build_datacenter(datacenter_dir)
+Sim = HistoricalDemandSimulator(distr_dir)
+batches, batch_sizes = read_demand(demand_fp, RCoeffs)
 
 
 oracle_result = rack_placement_oracle(batches, batch_sizes, DC)
