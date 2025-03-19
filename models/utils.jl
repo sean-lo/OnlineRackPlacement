@@ -1,10 +1,3 @@
-using Pkg
-Pkg.activate("$(@__DIR__)/../")
-
-using CSV
-using DataFrames
-using Glob
-
 function read_CSVs_from_dir(
     input_dir::String
 )

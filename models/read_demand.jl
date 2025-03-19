@@ -1,15 +1,12 @@
-
-using Pkg
-Pkg.activate("$(@__DIR__)/../")
-
 const CONST_BATCH_SIZE = 10
 
 function read_demand(
     demand_fp::String,
+    use_batching::Bool = false,
     batch_size::Int = CONST_BATCH_SIZE,
 )
     demand_data = CSV.read(demand_fp, DataFrame)
-    if :batchID in names(demand_data)
+    if use_batching && (:batchID in names(demand_data))
         T = maximum(demand_data[!, :batchID])
         batches = Dict{Int, Dict{String, Any}}()
         for t in 1:T

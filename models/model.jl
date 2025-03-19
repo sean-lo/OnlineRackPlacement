@@ -1,12 +1,3 @@
-using Pkg
-Pkg.activate("$(@__DIR__)/../")
-
-using CSV
-using Glob
-using DataFrames
-using JuMP
-using Gurobi
-
 function build_solve_oracle_model(
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int},

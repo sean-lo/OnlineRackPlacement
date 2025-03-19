@@ -1,11 +1,4 @@
-using Pkg
-Pkg.activate("$(@__DIR__)/../")
-
 include("$(@__DIR__)/utils.jl")
-
-using CSV
-using Glob
-using DataFrames
 
 """
 Data structure for immutable attributes.

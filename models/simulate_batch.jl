@@ -1,10 +1,5 @@
 include("$(@__DIR__)/utils.jl")
 
-using CSV
-using DataFrames
-using StatsBase
-using Random
-
 function _qcdf_interpolated(
     quantiles::Vector{Float64},
     values::Vector{T},
