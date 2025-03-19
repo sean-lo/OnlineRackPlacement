@@ -109,7 +109,7 @@ function build_solve_incremental_model(
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int},
     strategy::String,
-    RCoeffs::RackPlacementCoefficients,
+    RCoeffsD::RackPlacementCoefficientsDynamic,
     ;
     sim_batches::Union{Dict, Nothing} = nothing,
     sim_batch_sizes::Union{Dict, Nothing} = nothing,
@@ -183,6 +183,56 @@ function build_solve_incremental_model(
             [τ in t+1:T, i in 1:sim_batch_sizes[τ], r in DC.row_IDs], 
             sum(x_next[τ,i,j] for j in DC.row_tilegroups_map[r]) 
             == y_next[τ,i,r] * batches[t]["size"][i]
+        )
+    end
+
+    # Space
+    @expression(
+        model, 
+        space_now[r in DC.row_IDs],
+        sum(
+            x_fixed[(τ,i,j)]
+            for τ in 1:t-1, i in 1:batch_sizes[τ], j in DC.row_tilegroups_map[r]
+                if (τ,i,j) in keys(x_fixed)
+        )
+        + sum(
+            x_now[i,j]
+            for i in 1:batch_sizes[t], j in DC.row_tilegroups_map[r]
+        )
+    )
+    if strategy == "SAA"
+        @expression(
+            model, 
+            space_next[r in DC.row_IDs, s in 1:S],
+            sum(
+                x_next[(τ,s,i,j)]
+                for τ in t+1:T, s in 1:S, i in 1:sim_batch_sizes[(τ,s)], j in DC.row_tilegroups_map[r]
+            )
+        )
+        @constraint(
+            model, 
+            [r in DC.row_IDs, s in 1:S],
+            space_now[r] + space_next[r,s] ≤ DC.row_capacity[r]
+        )
+    elseif strategy in ["SSOA", "MPC"]
+        @expression(
+            model, 
+            space_next[r in DC.row_IDs],
+            sum(
+                x_next[(τ,i,j)]
+                for τ in t+1:T, i in 1:sim_batch_sizes[τ], j in DC.row_tilegroups_map[r]
+            )
+        )
+        @constraint(
+            model, 
+            [r in DC.row_IDs],
+            space_now[r] + space_next[r] ≤ DC.row_capacity[r]
+        )
+    else
+        @constraint(
+            model, 
+            [r in DC.row_IDs],
+            space_now[r] ≤ DC.row_capacity[r]
         )
     end
 
@@ -411,7 +461,7 @@ function build_solve_incremental_model(
             model, 
             room_penalty,
             - sum(
-                RCoeffs.room_penalty * w_now[i,m] 
+                RCoeffsD.room_penalties[m] * w_now[i,m] 
                 for i in 1:batch_sizes[t], m in DC.room_IDs
             )
         )
@@ -422,7 +472,7 @@ function build_solve_incremental_model(
             model,
             row_penalty,
             - sum(
-                RCoeffs.row_penalty * z_now[r]
+                RCoeffsD.row_penalties[r] * z_now[r]
                 for r in DC.row_IDs
             )
         )
@@ -433,7 +483,7 @@ function build_solve_incremental_model(
             model, 
             tilegroup_penalty, 
             - sum(
-                RCoeffs.tilegroup_penalty * v_now[i,j]
+                RCoeffsD.tilegroup_penalty * v_now[i,j]
                 for i in 1:batch_sizes[t], j in DC.tilegroup_IDs
             )
         )
@@ -463,7 +513,7 @@ function build_solve_incremental_model(
     if strategy == "myopic"
         @objective(model, Max, current_reward)
     elseif strategy in ["SSOA", "MPC", "SAA"]
-        @objective(model, Max, current_reward + RCoeffs.discount_factor * future_assignment)
+        @objective(model, Max, current_reward + RCoeffsD.discount_factor * future_assignment)
     end
     
     optimize!(model)
@@ -489,6 +539,23 @@ function build_solve_incremental_model(
         "objective" => JuMP.objective_value(model),
         "current_reward" => JuMP.value(current_reward),
         "current_assignment" => JuMP.value(current_assignment),
+        "space" => Dict(
+            r => JuMP.value(space_now[r])
+            for r in DC.row_IDs
+        ),
+        "cooling" => Dict(
+            c => JuMP.value(cooling_now[c]) 
+            for c in DC.cooling_IDs
+        ),
+        "power" => Dict(
+            p => JuMP.value(power_now[p]) 
+            for p in DC.power_IDs
+        ),
+        "failpower" => Dict(
+            (p_, p) => JuMP.value(failpower_now[p_,p]) 
+            for p_ in DC.toppower_IDs
+                for p in setdiff(DC.power_IDs, DC.power_descendants_map[p_])
+        ),
     )
     if strategy in ["SSOA", "SAA", "MPC"]
         results["future_assignment"] = JuMP.value(future_assignment)
@@ -533,18 +600,22 @@ function rack_placement(
 
     start_time = time()
 
+    RCoeffsD = RackPlacementCoefficientsDynamic(RCoeffs)
+    RCoeffsD.row_penalties = Dict(r => RCoeffs.row_penalty for r in DC.row_IDs)
+    RCoeffsD.room_penalties = Dict(m => RCoeffs.room_penalty for m in DC.room_IDs)
     T = length(batches)
 
     x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
     y_fixed = Dict{Tuple{Int, Int, Int}, Int}()
     time_taken = Float64[]
+    all_metrics = Dict{String, Any}[]
 
     for t in 1:T
 
         # Simulate
         if strategy in ["SSOA", "SAA", "MPC"]
             sim_batches, sim_batch_sizes = simulate_batches(
-                strategy, Sim, RCoeffs,
+                strategy, Sim, RCoeffsD,
                 t, T,
                 batch_sizes, S,
             )
@@ -562,7 +633,7 @@ function rack_placement(
             batches,
             batch_sizes,
             strategy,
-            RCoeffs,
+            RCoeffsD,
             sim_batches = sim_batches,
             sim_batch_sizes = sim_batch_sizes,
             S = S,
@@ -582,6 +653,13 @@ function rack_placement(
             println("Placed $(length(x_fixed_new)) new demands ($(length(x_fixed)) total).")
             println("--------------------------------")
         end
+        
+        # Compute metrics for current iteration
+        metrics = create_metrics(DC, batches, batch_sizes, t, y_fixed)
+        push!(all_metrics, metrics)
+
+        # Update dynamic parameters
+        update_dynamic_parameters!(RCoeffsD, DC, metrics)
     end
 
     return Dict(
@@ -593,4 +671,49 @@ function rack_placement(
             for (t, i, r) in keys(y_fixed)
         ),
     )
+end
+
+function update_dynamic_parameters!(
+    RCoeffsD::RackPlacementCoefficientsDynamic,
+    DC::DataCenter,
+    metrics::Dict{String, Any},
+)
+    
+    RCoeffsD.row_penalties = Dict(
+        r => (
+            metrics["row_space_utilizations"][r] <= 0 ? 2.0 : (
+                metrics["row_space_utilizations"][r] <= 10 ? 1.0 : 0.0
+            )
+        )
+        for r in DC.row_IDs
+    )
+    RCoeffsD.room_penalties = Dict(
+        m => (
+            metrics["room_space_utilizations"][m] <= 0 ? 40.0 : (
+                metrics["room_space_utilizations"][m] <= 0.3 * (
+                    DC.room_rows_map[m] * 20 # Number of tiles in room m
+                ) ? 3.0 : 0.0
+            )
+        )
+        for m in DC.room_IDs
+    )
+    return 
+end
+
+function create_metrics(
+    DC::DataCenter,
+    results::Dict{String, Any},
+)
+    metrics = Dict{String, Any}()
+    metrics["room_space_utilizations"] = Dict{Int, Float64}(
+        m => sum(
+            results["space"][r]
+            for r in DC.row_IDs
+                if DC.row_room_map[r] == m
+        )
+        for m in DC.room_IDs
+    )
+
+    return metrics
+
 end

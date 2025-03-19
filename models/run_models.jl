@@ -34,7 +34,6 @@ DC = build_datacenter(datacenter_dir)
 Sim = HistoricalDemandSimulator(distr_dir)
 batches, batch_sizes = read_demand(demand_fp, RCoeffs)
 
-
 oracle_result = rack_placement_oracle(batches, batch_sizes, DC)
 println(oracle_result["x"])
 println(oracle_result["y"])
@@ -60,6 +59,9 @@ MPC_result["time_taken"][end]
 
 include("$(@__DIR__)/model.jl")
 
+RCoeffsD = RackPlacementCoefficientsDynamic(RCoeffs)
+RCoeffsD.row_penalties = Dict(r => RCoeffs.row_penalty for r in DC.row_IDs)
+RCoeffsD.room_penalties = Dict(m => RCoeffs.room_penalty for m in DC.room_IDs)
 T = length(batches)
 
 x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
@@ -76,7 +78,7 @@ MIPGap = 1e-4
 t = 1
 
 sim_batches, sim_batch_sizes = simulate_batches(
-    strategy, Sim, RCoeffs,
+    strategy, Sim, RCoeffsD,
     t, T,
     batch_sizes, S,
 )
@@ -89,7 +91,7 @@ results_objs = build_solve_incremental_model(
     batches,
     batch_sizes,
     strategy,
-    RCoeffs,
+    RCoeffsD,
     sim_batches = sim_batches,
     sim_batch_sizes = sim_batch_sizes,
     S = S,
@@ -112,7 +114,7 @@ results = build_solve_incremental_model(
     batches,
     batch_sizes,
     strategy,
-    RCoeffs,
+    RCoeffsD,
     sim_batches = sim_batches,
     sim_batch_sizes = sim_batch_sizes,
     S = S,
@@ -139,4 +141,22 @@ results_objs["future_assignment"]
 
 results["x"]
 results_objs["x"]
+
+row_size_utils = [
+    sum(
+        [batches[t]["size"][i] * results["y"][(t, i, r)]
+        for i in 1:length(batches[t]["size"])
+            if (t, i, r) in keys(results["y"])],
+        init = 0.0
+    )
+    for r in DC.row_IDs
+]
+map(
+    x -> (x <= 0 ? 2 : (x <= 10 ? 1 : 0)),
+    row_size_utils
+)
+
+findall(x -> x > 0, row_size_utils)
+
+RCoeffs.row_penalty = 2.0
 
