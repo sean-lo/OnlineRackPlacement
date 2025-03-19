@@ -429,6 +429,7 @@ function rack_placement(
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 300,
     time_limit_sec_per_iteration = 60,
+    verbose::Bool = true,
 )
     if isnothing(env)
         env = Gurobi.Env()
@@ -485,6 +486,12 @@ function rack_placement(
         merge!(x_fixed, x_fixed_new)
         merge!(y_fixed, y_fixed_new)
         push!(time_taken, time() - start_time)
+        if verbose
+            println("--------------------------------")
+            println("Iteration $t of $T completed in $(time_taken[t]) s.")
+            println("Placed $(length(x_fixed_new)) new demands ($(length(x_fixed)) total).")
+            println("--------------------------------")
+        end
     end
 
     return Dict(
