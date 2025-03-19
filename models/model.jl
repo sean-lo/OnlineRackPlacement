@@ -100,7 +100,7 @@ function rack_placement_oracle(
 end
 
 
-function build_solve_incremental_model!(
+function build_solve_incremental_model(
     x_fixed::Dict{Tuple{Int, Int, Int}, Int},
     y_fixed::Dict{Tuple{Int, Int, Int}, Int},
     DC::DataCenter,
@@ -397,20 +397,22 @@ function build_solve_incremental_model!(
     
     optimize!(model)
     
+    x_fixed_new = Dict{Tuple{Int, Int, Int}, Int}()
+    y_fixed_new = Dict{Tuple{Int, Int, Int}, Int}()
     for i in 1:batch_sizes[t], j in DC.tilegroup_IDs
         val = round(JuMP.value(x_now[i,j]))
         if val > 0
-            x_fixed[(t,i,j)] = val
+            x_fixed_new[(t,i,j)] = val
         end
     end
     for i in 1:batch_sizes[t], r in DC.row_IDs
         val = round(JuMP.value(y_now[i,r]))
         if val == 1
-            y_fixed[(t,i,r)] = val
+            y_fixed_new[(t,i,r)] = val
         end
     end
 
-    return
+    return (x_fixed_new, y_fixed_new)
 end
 
 function rack_placement(
@@ -460,7 +462,7 @@ function rack_placement(
         end
 
         # Optimize incremental model
-        obj_val = build_solve_incremental_model!(
+        (x_fixed_new, y_fixed_new) = build_solve_incremental_model(
             x_fixed,
             y_fixed,
             DC,
@@ -480,6 +482,8 @@ function rack_placement(
                 time_limit_sec - (time() - start_time),
             )
         )
+        merge!(x_fixed, x_fixed_new)
+        merge!(y_fixed, y_fixed_new)
         push!(time_taken, time() - start_time)
     end
 
