@@ -18,7 +18,7 @@ DC = build_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
 Sim = HistoricalDemandSimulator("$(@__DIR__)/../data/syntheticDemandSimulation")
 batches, batch_sizes = read_demand("$(@__DIR__)/../data/demandTrajectories/150res_1.csv")
 
-oracle_result = build_solve_oracle_model(batches, batch_sizes, DC)
+oracle_result = rack_placement_oracle(batches, batch_sizes, DC)
 println(oracle_result["x"])
 println(oracle_result["y"])
 println(oracle_result["objective"])

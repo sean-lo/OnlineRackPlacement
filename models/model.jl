@@ -1,4 +1,4 @@
-function build_solve_oracle_model(
+function rack_placement_oracle(
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int},
     DC::DataCenter,
