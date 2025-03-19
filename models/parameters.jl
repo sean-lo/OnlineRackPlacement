@@ -6,9 +6,9 @@ using Parameters
     row_penalty::Float64 = 2.0 # 2, 1, 0 (at 0, 0.5, 1.0) 
     tilegroup_penalty::Float64 = 1.0
     # alpha in paper 
-    balance::Float64 = 1e-5
+    power_surplus_penalty::Float64 = 1e-5
     # beta in paper
-    balance_exceeded::Float64 = 1e-3
+    power_balance_penalty::Float64 = 1e-3
 end
 
 @with_kw mutable struct RackPlacementCoefficientsDynamic
@@ -20,9 +20,9 @@ end
     row_penalties::Dict{Int, Float64} = Dict{Int, Float64}()
     tilegroup_penalty::Float64
     # alpha in paper 
-    balance::Float64
+    power_surplus_penalty::Float64
     # beta in paper
-    balance_exceeded::Float64
+    power_balance_penalty::Float64
 end
 
 function RackPlacementCoefficientsDynamic(
@@ -34,7 +34,7 @@ function RackPlacementCoefficientsDynamic(
         room_penalty = RCoeffs.room_penalty,
         row_penalty = RCoeffs.row_penalty,
         tilegroup_penalty = RCoeffs.tilegroup_penalty,
-        balance = RCoeffs.balance,
-        balance_exceeded = RCoeffs.balance_exceeded,
+        power_surplus_penalty = RCoeffs.power_surplus_penalty,
+        power_balance_penalty = RCoeffs.power_balance_penalty,
     )
 end

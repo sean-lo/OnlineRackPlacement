@@ -118,6 +118,8 @@ function build_solve_incremental_model(
     obj_minimize_rooms::Bool = false,
     obj_minimize_rows::Bool = false,
     obj_minimize_tilegroups::Bool = false,
+    obj_minimize_power_surplus::Bool = false,
+    obj_minimize_power_balance::Bool = false,
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 300,
 )
@@ -139,6 +141,13 @@ function build_solve_incremental_model(
     end
     if obj_minimize_tilegroups
         @variable(model, v_now[i in 1:batch_sizes[t], j in DC.tilegroup_IDs], Bin)
+    end
+    if obj_minimize_power_surplus
+        @variable(model, Φ_now ≥ 0)
+    end
+    if obj_minimize_power_balance
+        @variable(model, Ψ_now ≥ 0)
+        @variable(model, Ω_now ≥ 0)
     end
     if strategy == "SAA"
         @variable(model, x_next[τ in t+1:T, s in 1:S, i in 1:sim_batch_sizes[(τ,s)], j in DC.tilegroup_IDs] ≥ 0, Int)
@@ -447,6 +456,63 @@ function build_solve_incremental_model(
         )
     end
 
+    if obj_minimize_power_surplus || obj_minimize_power_balance
+        @expression(
+            model, 
+            toppower_pair_utilization[
+                m in DC.room_IDs,
+                (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
+            ],
+            sum(
+                batches[τ]["power"][i] * x_fixed[(τ,i,j)] 
+                for τ in 1:t-1, 
+                    i in 1:batch_sizes[τ], 
+                    j in intersect(
+                        DC.power_tilegroups_map[p1],
+                        DC.power_tilegroups_map[p2]
+                    )
+                    if (τ,i,j) in keys(x_fixed)
+            )
+            + sum(
+                batches[t]["power"][i] * x_now[i,j]
+                for i in 1:batch_sizes[t], j in intersect(
+                    DC.power_tilegroups_map[p1],
+                    DC.power_tilegroups_map[p2]
+                )
+            )
+        )
+    end
+
+    if obj_minimize_power_surplus
+        @constraint(
+            model, 
+            [
+                m in DC.room_IDs,
+                (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
+            ],
+            Φ_now ≥ toppower_pair_utilization[m, (p1, p2)] - DC.power_balanced_capacity[m]
+        )
+    end
+
+    if obj_minimize_power_balance
+        @constraint(
+            model, 
+            [
+                m in DC.room_IDs,
+                (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
+            ],
+            Ψ_now ≥ toppower_pair_utilization[m, (p1, p2)]
+        )
+        @constraint(
+            model, 
+            [
+                m in DC.room_IDs,
+                (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
+            ],
+            Ω_now ≤ toppower_pair_utilization[m, (p1, p2)]
+        )
+    end
+
     @expression(
         model, 
         current_assignment, 
@@ -489,7 +555,22 @@ function build_solve_incremental_model(
         )
         add_to_expression!(current_reward, tilegroup_penalty)
     end
-
+    if obj_minimize_power_surplus
+        @expression(
+            model, 
+            power_surplus_penalty,
+            - RCoeffsD.power_surplus_penalty * Φ_now
+        )
+        add_to_expression!(current_reward, power_surplus_penalty)
+    end
+    if obj_minimize_power_balance
+        @expression(
+            model, 
+            power_balance_penalty,
+            - RCoeffsD.power_balance_penalty * (Ψ_now - Ω_now)
+        )
+        add_to_expression!(current_reward, power_balance_penalty)
+    end
     if strategy == "SAA"
         @expression(
             model,
@@ -569,6 +650,19 @@ function build_solve_incremental_model(
     if obj_minimize_tilegroups
         results["tilegroup_penalty"] = JuMP.value(tilegroup_penalty)
     end
+    if obj_minimize_power_surplus || obj_minimize_power_balance
+        results["toppower_pair_utilization"] = Dict(
+            (m, p1, p2) => JuMP.value(toppower_pair_utilization[m, (p1, p2)])
+            for m in DC.room_IDs
+                for (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
+        )
+    end
+    if obj_minimize_power_surplus
+        results["power_surplus_penalty"] = JuMP.value(power_surplus_penalty)
+    end
+    if obj_minimize_power_balance
+        results["power_balance_penalty"] = JuMP.value(power_balance_penalty)
+    end
     return results
 end
 
@@ -583,6 +677,11 @@ function rack_placement(
     strategy::String = "SSOA",
     S::Int = 1, # Number of sample paths
     seed::Union{Int, Nothing} = nothing,
+    obj_minimize_rooms::Bool = false,
+    obj_minimize_rows::Bool = false,
+    obj_minimize_tilegroups::Bool = false,
+    obj_minimize_power_surplus::Bool = false,
+    obj_minimize_power_balance::Bool = false,
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 0,
     time_limit_sec_per_iteration = 60,
@@ -638,6 +737,11 @@ function rack_placement(
             sim_batch_sizes = sim_batch_sizes,
             S = S,
             env = env,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
             time_limit_sec = max(
                 time_limit_sec_per_iteration,
