@@ -55,3 +55,86 @@ SAA_result["time_taken"][end]
 MPC_result["time_taken"][end]
 
 
+
+include("$(@__DIR__)/model.jl")
+
+T = length(batches)
+
+x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
+y_fixed = Dict{Tuple{Int, Int, Int}, Int}()
+time_taken = Float64[]
+strategy = "SSOA"
+S = 1
+time_limit_sec_per_iteration = 60
+time_limit_sec = 0
+start_time = time()
+env = Gurobi.Env()
+MIPGap = 1e-4
+
+t = 1
+
+sim_batches, sim_batch_sizes = simulate_batches(
+    strategy, Sim, RCoeffs,
+    t, T,
+    batch_sizes, S,
+)
+results_objs = build_solve_incremental_model(
+    x_fixed,
+    y_fixed,
+    DC,
+    t,
+    T,
+    batches,
+    batch_sizes,
+    strategy,
+    RCoeffs,
+    sim_batches = sim_batches,
+    sim_batch_sizes = sim_batch_sizes,
+    S = S,
+    env = env,
+    obj_minimize_rooms = true,
+    obj_minimize_rows = true,
+    obj_minimize_tilegroups = true,
+    MIPGap = MIPGap,
+    time_limit_sec = max(
+        time_limit_sec_per_iteration,
+        time_limit_sec - (time() - start_time),
+    )
+)
+results = build_solve_incremental_model(
+    x_fixed,
+    y_fixed,
+    DC,
+    t,
+    T,
+    batches,
+    batch_sizes,
+    strategy,
+    RCoeffs,
+    sim_batches = sim_batches,
+    sim_batch_sizes = sim_batch_sizes,
+    S = S,
+    env = env,
+    obj_minimize_rooms = false,
+    obj_minimize_rows = false,
+    obj_minimize_tilegroups = false,
+    MIPGap = MIPGap,
+    time_limit_sec = max(
+        time_limit_sec_per_iteration,
+        time_limit_sec - (time() - start_time),
+    )
+)
+
+results["current_reward"]
+results_objs["current_reward"]
+
+results_objs["room_penalty"]
+results_objs["row_penalty"]
+results_objs["tilegroup_penalty"]
+
+results["future_assignment"]
+results_objs["future_assignment"]
+
+results["x"]
+results_objs["x"]
+

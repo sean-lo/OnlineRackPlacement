@@ -109,12 +109,15 @@ function build_solve_incremental_model(
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int},
     strategy::String,
+    RCoeffs::RackPlacementCoefficients,
     ;
     sim_batches::Union{Dict, Nothing} = nothing,
     sim_batch_sizes::Union{Dict, Nothing} = nothing,
     S::Int = 1,
-    gamma::Float64 = 1.0,
     env::Union{Gurobi.Env, Nothing} = nothing,
+    obj_minimize_rooms::Bool = false,
+    obj_minimize_rows::Bool = false,
+    obj_minimize_tilegroups::Bool = false,
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 300,
 )
@@ -128,6 +131,15 @@ function build_solve_incremental_model(
 
     @variable(model, x_now[i in 1:batch_sizes[t], j in DC.tilegroup_IDs] ≥ 0, Int)
     @variable(model, y_now[i in 1:batch_sizes[t], r in DC.row_IDs], Bin)
+    if obj_minimize_rooms
+        @variable(model, w_now[i in 1:batch_sizes[t], m in DC.room_IDs], Bin)
+    end
+    if obj_minimize_rows
+        @variable(model, z_now[r in DC.row_IDs], Bin)
+    end
+    if obj_minimize_tilegroups
+        @variable(model, v_now[i in 1:batch_sizes[t], j in DC.tilegroup_IDs], Bin)
+    end
     if strategy == "SAA"
         @variable(model, x_next[τ in t+1:T, s in 1:S, i in 1:sim_batch_sizes[(τ,s)], j in DC.tilegroup_IDs] ≥ 0, Int)
         @variable(model, y_next[τ in t+1:T, s in 1:S, i in 1:sim_batch_sizes[(τ,s)], r in DC.row_IDs], Bin)
@@ -361,18 +373,77 @@ function build_solve_incremental_model(
         )
     end
 
+    if obj_minimize_rooms
+        @constraint(
+            model, 
+            [i in 1:batch_sizes[t], r in DC.row_IDs],
+            y_now[i,r] ≤ w_now[i, DC.row_room_map[r]]
+        )
+    end
+
+    if obj_minimize_rows
+        @constraint(
+            model, 
+            [i in 1:batch_sizes[t], r in DC.row_IDs],
+            y_now[i,r] ≤ z_now[r]
+        )
+    end
+
+    if obj_minimize_tilegroups
+        @constraint(
+            model,
+            [i in 1:batch_sizes[t], j in DC.tilegroup_IDs],
+            x_now[i,j] ≤ batches[t]["size"][i] * v_now[i,j]
+        )
+    end
+
     @expression(
         model, 
-        current_reward, 
+        current_assignment, 
         sum(
             batches[t]["reward"][i] * y_now[i,r] 
             for i in 1:batch_sizes[t], r in DC.row_IDs
         )
     )
+    current_reward = current_assignment
+    if obj_minimize_rooms
+        @expression(
+            model, 
+            room_penalty,
+            - sum(
+                RCoeffs.room_penalty * w_now[i,m] 
+                for i in 1:batch_sizes[t], m in DC.room_IDs
+            )
+        )
+        add_to_expression!(current_reward, room_penalty)
+    end
+    if obj_minimize_rows
+        @expression(
+            model,
+            row_penalty,
+            - sum(
+                RCoeffs.row_penalty * z_now[r]
+                for r in DC.row_IDs
+            )
+        )
+        add_to_expression!(current_reward, row_penalty)
+    end
+    if obj_minimize_tilegroups
+        @expression(
+            model, 
+            tilegroup_penalty, 
+            - sum(
+                RCoeffs.tilegroup_penalty * v_now[i,j]
+                for i in 1:batch_sizes[t], j in DC.tilegroup_IDs
+            )
+        )
+        add_to_expression!(current_reward, tilegroup_penalty)
+    end
+
     if strategy == "SAA"
         @expression(
             model,
-            future_reward,
+            future_assignment,
             sum(
                 sim_batches[(τ,s)]["reward"][i] * y_next[τ,s,i,r]   
                 for τ in t+1:T, s in 1:S, i in 1:sim_batch_sizes[(τ,s)], r in DC.row_IDs
@@ -381,7 +452,7 @@ function build_solve_incremental_model(
     elseif strategy in ["SSOA", "MPC"]
         @expression(
             model,
-            future_reward,
+            future_assignment,
             sum(
                 sim_batches[τ]["reward"][i] * y_next[τ,i,r]   
                 for τ in t+1:T, i in 1:sim_batch_sizes[τ], r in DC.row_IDs
@@ -392,7 +463,7 @@ function build_solve_incremental_model(
     if strategy == "myopic"
         @objective(model, Max, current_reward)
     elseif strategy in ["SSOA", "MPC", "SAA"]
-        @objective(model, Max, current_reward + gamma *  future_reward)
+        @objective(model, Max, current_reward + RCoeffs.discount_factor * future_assignment)
     end
     
     optimize!(model)
@@ -412,7 +483,26 @@ function build_solve_incremental_model(
         end
     end
 
-    return (x_fixed_new, y_fixed_new)
+    results = Dict(
+        "x" => x_fixed_new,
+        "y" => y_fixed_new,
+        "objective" => JuMP.objective_value(model),
+        "current_reward" => JuMP.value(current_reward),
+        "current_assignment" => JuMP.value(current_assignment),
+    )
+    if strategy in ["SSOA", "SAA", "MPC"]
+        results["future_assignment"] = JuMP.value(future_assignment)
+    end
+    if obj_minimize_rooms
+        results["room_penalty"] = JuMP.value(room_penalty)
+    end
+    if obj_minimize_rows
+        results["row_penalty"] = JuMP.value(row_penalty)
+    end
+    if obj_minimize_tilegroups
+        results["tilegroup_penalty"] = JuMP.value(tilegroup_penalty)
+    end
+    return results
 end
 
 function rack_placement(
@@ -463,7 +553,7 @@ function rack_placement(
         end
 
         # Optimize incremental model
-        (x_fixed_new, y_fixed_new) = build_solve_incremental_model(
+        results = build_solve_incremental_model(
             x_fixed,
             y_fixed,
             DC,
@@ -472,10 +562,10 @@ function rack_placement(
             batches,
             batch_sizes,
             strategy,
+            RCoeffs,
             sim_batches = sim_batches,
             sim_batch_sizes = sim_batch_sizes,
             S = S,
-            gamma = RCoeffs.discount_factor,
             env = env,
             MIPGap = MIPGap,
             time_limit_sec = max(
@@ -483,8 +573,8 @@ function rack_placement(
                 time_limit_sec - (time() - start_time),
             )
         )
-        merge!(x_fixed, x_fixed_new)
-        merge!(y_fixed, y_fixed_new)
+        merge!(x_fixed, results["x"])
+        merge!(y_fixed, results["y"])
         push!(time_taken, time() - start_time)
         if verbose
             println("--------------------------------")
