@@ -101,6 +101,43 @@ function rack_placement_oracle(
 end
 
 
+function postprocess_results_oracle(
+    DC::DataCenter,
+    results::Dict{String, Any},
+    batches::Dict{Int, Dict{String, Any}},
+    batch_sizes::Dict{Int, Int},
+    ;
+)
+    T = length(batches)
+    room_space_utilization_data = DataFrame(Dict(
+        "$m" => [
+            sum(
+                results["x"][(t,i,j)]
+                for t in 1:T, i in 1:batch_sizes[t], j in DC.room_tilegroups_map[m]
+                    if (t,i,j) in keys(results["x"])
+            ) / (
+                length(DC.room_rows_map[m]) * 20 # Number of tiles in room m
+            )
+        ]
+        for m in DC.room_IDs
+    ))
+    toppower_utilization_data = DataFrame(Dict(
+        "$p" => [
+            sum(
+                (batches[t]["power"][i] / 2) * results["x"][(t,i,j)]
+                for t in 1:T, i in 1:batch_sizes[t], j in DC.power_tilegroups_map[p]
+                    if (t,i,j) in keys(results["x"])
+            ) / DC.power_capacity[p]
+        ] 
+        for p in DC.toppower_IDs
+    ))
+    return Dict(
+        "room_space_utilization_data" => room_space_utilization_data,
+        "toppower_utilization_data" => toppower_utilization_data,
+    )
+end
+
+
 function build_solve_incremental_model(
     x_fixed::Dict{Tuple{Int, Int, Int}, Int},
     y_fixed::Dict{Tuple{Int, Int, Int}, Int},

@@ -52,7 +52,7 @@ function run_experiment(
     batches, batch_sizes = read_demand(demand_fp, RCoeffs, use_batching, batch_size)
     
     if strategy == "oracle"
-        result = rack_placement_oracle(batches, batch_sizes, DC, env, Inf)
+        r = postprocess_results_oracle(DC, result, batches, batch_sizes)
     elseif strategy == "myopic"
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
