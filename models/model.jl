@@ -115,17 +115,19 @@ function build_solve_incremental_model(
     sim_batch_sizes::Union{Dict, Nothing} = nothing,
     S::Int = 1,
     env::Union{Gurobi.Env, Nothing} = nothing,
-    obj_minimize_rooms::Bool = false,
-    obj_minimize_rows::Bool = false,
-    obj_minimize_tilegroups::Bool = false,
-    obj_minimize_power_surplus::Bool = false,
-    obj_minimize_power_balance::Bool = false,
+    obj_minimize_rooms::Bool = true,
+    obj_minimize_rows::Bool = true,
+    obj_minimize_tilegroups::Bool = true,
+    obj_minimize_power_surplus::Bool = true,
+    obj_minimize_power_balance::Bool = true,
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 300,
 )
     if isnothing(env)
         env = Gurobi.Env()
     end
+
+    start_time = time()
 
     model = Model(() -> Gurobi.Optimizer(env))
     set_optimizer_attribute(model, "MIPGap", MIPGap)
@@ -438,6 +440,11 @@ function build_solve_incremental_model(
             [i in 1:batch_sizes[t], r in DC.row_IDs],
             y_now[i,r] ≤ w_now[i, DC.row_room_map[r]]
         )
+        @constraint(
+            model, 
+            [i in 1:batch_sizes[t]],
+            sum(w_now[i,m] for m in DC.room_IDs) ≤ 1
+        )
     end
 
     if obj_minimize_rows
@@ -453,6 +460,11 @@ function build_solve_incremental_model(
             model,
             [i in 1:batch_sizes[t], j in DC.tilegroup_IDs],
             x_now[i,j] ≤ batches[t]["size"][i] * v_now[i,j]
+        )
+        @constraint(
+            model, 
+            [i in 1:batch_sizes[t]],
+            sum(v_now[i,j] for j in DC.tilegroup_IDs) ≤ 1
         )
     end
 
@@ -521,7 +533,14 @@ function build_solve_incremental_model(
             for i in 1:batch_sizes[t], r in DC.row_IDs
         )
     )
-    current_reward = current_assignment
+    @expression(
+        model, 
+        current_reward, 
+        sum(
+            batches[t]["reward"][i] * y_now[i,r] 
+            for i in 1:batch_sizes[t], r in DC.row_IDs
+        )
+    )
     if obj_minimize_rooms
         @expression(
             model, 
@@ -617,7 +636,12 @@ function build_solve_incremental_model(
     results = Dict(
         "x" => x_fixed_new,
         "y" => y_fixed_new,
+        "w" => JuMP.value.(w_now),
+        "z" => JuMP.value.(z_now),
+        "v" => JuMP.value.(v_now),
+        "time_taken" => time() - start_time,
         "objective" => JuMP.objective_value(model),
+        "optimality_gap" => JuMP.relative_gap(model),
         "current_reward" => JuMP.value(current_reward),
         "current_assignment" => JuMP.value(current_assignment),
         "space" => Dict(
@@ -677,11 +701,11 @@ function rack_placement(
     strategy::String = "SSOA",
     S::Int = 1, # Number of sample paths
     seed::Union{Int, Nothing} = nothing,
-    obj_minimize_rooms::Bool = false,
-    obj_minimize_rows::Bool = false,
-    obj_minimize_tilegroups::Bool = false,
-    obj_minimize_power_surplus::Bool = false,
-    obj_minimize_power_balance::Bool = false,
+    obj_minimize_rooms::Bool = true,
+    obj_minimize_rows::Bool = true,
+    obj_minimize_tilegroups::Bool = true,
+    obj_minimize_power_surplus::Bool = true,
+    obj_minimize_power_balance::Bool = true,
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 0,
     time_limit_sec_per_iteration = 60,
@@ -702,12 +726,12 @@ function rack_placement(
     RCoeffsD = RackPlacementCoefficientsDynamic(RCoeffs)
     RCoeffsD.row_penalties = Dict(r => RCoeffs.row_penalty for r in DC.row_IDs)
     RCoeffsD.room_penalties = Dict(m => RCoeffs.room_penalty for m in DC.room_IDs)
+    RCoeffsD.room_penalties[first(DC.room_IDs)] = 0.0
     T = length(batches)
 
     x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
     y_fixed = Dict{Tuple{Int, Int, Int}, Int}()
-    time_taken = Float64[]
-    all_metrics = Dict{String, Any}[]
+    all_results = Dict{String, Any}[]
 
     for t in 1:T
 
@@ -750,74 +774,147 @@ function rack_placement(
         )
         merge!(x_fixed, results["x"])
         merge!(y_fixed, results["y"])
-        push!(time_taken, time() - start_time)
         if verbose
             println("--------------------------------")
-            println("Iteration $t of $T completed in $(time_taken[t]) s.")
-            println("Placed $(length(x_fixed_new)) new demands ($(length(x_fixed)) total).")
+            println("Iteration $t of $T completed in $(results["time_taken"]) s.")
+            println("Placed $(length(results["x"])) new demands ($(length(x_fixed)) total).")
+            println("Current assignment:  $(results["current_assignment"])")
+            if strategy in ["SSOA", "SAA", "MPC"]
+                println("Future assignment:   $(results["future_assignment"])")
+            end
+            if obj_minimize_rooms
+                @printf("Room penalty:        %.2f\n", results["room_penalty"])
+            end
+            if obj_minimize_rows
+                @printf("Row penalty:         %.2f\n", results["row_penalty"])
+            end
+            if obj_minimize_tilegroups
+                @printf("Tilegroup penalty:   %.2f\n", results["tilegroup_penalty"])
+            end
             println("--------------------------------")
         end
         
         # Compute metrics for current iteration
-        metrics = create_metrics(DC, batches, batch_sizes, t, y_fixed)
-        push!(all_metrics, metrics)
+        update_metrics!(DC, results)
+        push!(all_results, deepcopy(results))
 
         # Update dynamic parameters
-        update_dynamic_parameters!(RCoeffsD, DC, metrics)
+        update_dynamic_parameters!(RCoeffsD, DC, results)
     end
 
     return Dict(
         "x" => x_fixed,
         "y" => y_fixed,
-        "time_taken" => time_taken,
+        "time_taken" => time() - start_time,
         "objective" => sum(
             batches[t]["reward"][i] * y_fixed[(t,i,r)]
             for (t, i, r) in keys(y_fixed)
         ),
+        "all_results" => all_results,
     )
 end
 
 function update_dynamic_parameters!(
     RCoeffsD::RackPlacementCoefficientsDynamic,
     DC::DataCenter,
-    metrics::Dict{String, Any},
+    results::Dict{String, Any},
 )
     
     RCoeffsD.row_penalties = Dict(
         r => (
-            metrics["row_space_utilizations"][r] <= 0 ? 2.0 : (
-                metrics["row_space_utilizations"][r] <= 10 ? 1.0 : 0.0
+            results["row_space_utilizations"][r] <= 0 ? 2.0 : (
+                results["row_space_utilizations"][r] <= 10 ? 1.0 : 0.0
             )
         )
         for r in DC.row_IDs
     )
     RCoeffsD.room_penalties = Dict(
         m => (
-            metrics["room_space_utilizations"][m] <= 0 ? 40.0 : (
-                metrics["room_space_utilizations"][m] <= 0.3 * (
-                    DC.room_rows_map[m] * 20 # Number of tiles in room m
+            results["room_space_utilizations"][m] <= 0 ? 40.0 : (
+                results["room_space_utilizations"][m] <= 0.3 * (
+                    length(DC.room_rows_map[m]) * 20 # Number of tiles in room m
                 ) ? 3.0 : 0.0
             )
         )
         for m in DC.room_IDs
     )
+    RCoeffsD.room_penalties[first(DC.room_IDs)] = 0.0
     return 
 end
 
-function create_metrics(
+function update_metrics!(
     DC::DataCenter,
     results::Dict{String, Any},
 )
-    metrics = Dict{String, Any}()
-    metrics["room_space_utilizations"] = Dict{Int, Float64}(
+    results["row_space_utilizations"] = Dict{Int, Float64}(
+        r => sum(
+            results["space"][j] 
+            for j in DC.row_tilegroups_map[r]
+        )
+        for r in DC.row_IDs
+    )
+    results["room_space_utilizations"] = Dict{Int, Float64}(
         m => sum(
-            results["space"][r]
-            for r in DC.row_IDs
-                if DC.row_room_map[r] == m
+            results["row_space_utilizations"][r]
+            for r in DC.room_rows_map[m]
         )
         for m in DC.room_IDs
     )
+    results["toppower_utilizations"] = Dict{Int, Float64}(
+        p => results["power"][p]
+        for p in DC.toppower_IDs
+    )
+    return 
 
-    return metrics
+end
 
+function postprocess_results(
+    all_results::Vector{Dict{String, Any}},
+    strategy::String,
+    ;
+    obj_minimize_rooms::Bool = true,
+    obj_minimize_rows::Bool = true,
+    obj_minimize_tilegroups::Bool = true,
+    obj_minimize_power_surplus::Bool = true,
+    obj_minimize_power_balance::Bool = true,
+)
+    keys_totake = [
+        "time_taken", "optimality_gap",
+        "current_reward", 
+        "current_assignment",
+    ]
+    if strategy in ["SSOA", "SAA", "MPC"]
+        push!(keys_totake, "future_assignment")
+    end
+    if obj_minimize_rooms
+        push!(keys_totake, "room_penalty")
+    end
+    if obj_minimize_rows
+        push!(keys_totake, "row_penalty")
+    end
+    if obj_minimize_tilegroups
+        push!(keys_totake, "tilegroup_penalty")
+    end
+    if obj_minimize_power_surplus
+        push!(keys_totake, "power_surplus_penalty")
+    end
+    if obj_minimize_power_balance
+        push!(keys_totake, "power_balance_penalty")
+    end
+
+    iteration_data = DataFrame(
+        Dict(k => [all_results[t][k] for t in 1:length(all_results)]
+        for k in keys_totake)
+    )
+    room_space_utilization_data = DataFrame(Dict(
+        "$m" => [
+            all_results[t]["room_space_utilizations"][m]
+            for t in 1:length(all_results)
+        ]
+        for m in DC.room_IDs
+    ))
+    return Dict(
+        "iteration_data" => iteration_data,
+        "room_space_utilization_data" => room_space_utilization_data,
+    )
 end

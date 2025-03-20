@@ -42,6 +42,7 @@ Data structure for immutable attributes.
 * `roompower_capacity` - dict of room power capacities
 * `cooling_capacity` - dict of CZ capacities
 * `roomcooling_capacity` - dict of room cooling capacities
+* `power_balanced_capacity` - dict of balanced power capacity for each room. (room_ID => Float64)
 """
 struct DataCenter
     room_IDs::Vector{Int}
@@ -80,6 +81,7 @@ struct DataCenter
     roompower_capacity::Dict{Int, Float64}
     cooling_capacity::Dict{Int, Float64}
     roomcooling_capacity::Dict{Int, Float64}
+    power_balanced_capacity::Dict{Int, Float64}
 end
 
 function build_datacenter(
@@ -288,6 +290,13 @@ function build_datacenter(
             x[!, :objectID] .=> x[!, :capacity]
         )
     )
+    power_balanced_capacity = Dict(
+        m => (
+            (sum(power_capacity[p] for p in room_toppower_map[m]) * 2) 
+            / (length(room_toppower_map[m]) * (length(room_toppower_map[m]) - 1))
+        )
+        for m in room_IDs
+    )
 
     return DataCenter(
         room_IDs, row_IDs, tile_IDs, power_IDs, cooling_IDs, tilegroup_IDs, toppower_IDs,
@@ -304,9 +313,12 @@ function build_datacenter(
         tilegroup_space_capacity,
         power_capacity, failpower_capacity, roompower_capacity,
         cooling_capacity, roomcooling_capacity,
+        power_balanced_capacity,
     )
 end
 
 DC = build_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
 
-DC.room_toppower_map[1]
+sum(DC.power_capacity[p] for p in DC.room_toppower_map[1])
+
+DC.tilegroup_tiles_map
