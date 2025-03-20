@@ -89,13 +89,16 @@ function run_experiment(
     end
 
     if strategy != "oracle"
-        CSV.write("$(result_dir)/$(strategy)_$(seed).csv", r["iteration_data"])
-        CSV.write("$(result_dir)/$(strategy)_$(seed)_room_space_utilization.csv", r["room_space_utilization_data"])
+        CSV.write("$(result_dir)/$(strategy).csv", r["iteration_data"])
+        CSV.write("$(result_dir)/$(strategy)_room_space_utilization.csv", r["room_space_utilization_data"])
         if online_objectives
-            CSV.write("$(result_dir)/$(strategy)_$(seed)_toppower_utilization.csv", r["toppower_utilization_data"])
-            CSV.write("$(result_dir)/$(strategy)_$(seed)_toppower_pair_utilization.csv", r["toppower_pair_utilization_data"])
+            CSV.write("$(result_dir)/$(strategy)_toppower_utilization.csv", r["toppower_utilization_data"])
+            CSV.write("$(result_dir)/$(strategy)_toppower_pair_utilization.csv", r["toppower_pair_utilization_data"])
         end
+    else
+        CSV.write("$(result_dir)/$(strategy).csv", DataFrame(Dict("objective" => [oracle_result["objective"]])))
     end
+    return
 end
 
 
@@ -104,16 +107,28 @@ fps = JSON.parsefile("$(@__DIR__)/../filepaths.json")
 datacenter_dir = fps["datacenter_dir"]
 distr_dir = fps["distr_dir"]
 demand_fp = fps["demand_fp"]
-result_dir = "$(@__DIR__)/../experiments/online_0.1"
 ### 
 
-run_experiment(
-    datacenter_dir,
-    distr_dir,
-    demand_fp,
-    result_dir,
-    ;
-    strategy = "SSOA",
-    time_limit_sec_per_iteration = 20,
-    online_objectives = true,
+for (strategy, discount_factor, online_objectives, seed) in Iterators.product(
+    ["oracle", "myopic", "SSOA", "MPC", "SAA"],
+    [0.1, 0.5, 1.0],
+    [true, false],
+    [1, 2, 3, 4, 5],
 )
+    result_dir = "$(@__DIR__)/../experiments/$(discount_factor)_$(online_objectives)_$(seed)"
+    if !isdir(result_dir)
+        mkdir(result_dir)
+    end
+    run_experiment(
+        datacenter_dir,
+        distr_dir,
+        demand_fp,
+        result_dir,
+        ;
+        strategy = strategy,
+        discount_factor = discount_factor,
+        time_limit_sec_per_iteration = 20,
+        online_objectives = online_objectives,
+        seed = seed,
+    )
+end
