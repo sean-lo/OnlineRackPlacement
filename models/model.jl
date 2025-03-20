@@ -870,6 +870,7 @@ end
 
 function postprocess_results(
     all_results::Vector{Dict{String, Any}},
+    DC::DataCenter,
     strategy::String,
     ;
     obj_minimize_rooms::Bool = true,

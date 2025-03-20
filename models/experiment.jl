@@ -52,7 +52,7 @@ function run_experiment(
             DC, Sim, RCoeffs, batches, batch_sizes, strategy = "myopic",
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
         )
-        r = postprocess_results(myopic_result["all_results"], "myopic")
+        r = postprocess_results(myopic_result["all_results"], DC, "myopic")
     elseif strategy == "MPC"
         MPC_result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, strategy = "MPC",
@@ -63,7 +63,7 @@ function run_experiment(
             obj_minimize_power_surplus = online_objectives,
             obj_minimize_power_balance = online_objectives,
         )
-        r = postprocess_results(MPC_result["all_results"], "MPC")
+        r = postprocess_results(MPC_result["all_results"], DC, "MPC")
     elseif strategy == "SSOA"
         SSOA_result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SSOA", S = 1, seed = seed,
@@ -74,7 +74,7 @@ function run_experiment(
             obj_minimize_power_surplus = online_objectives,
             obj_minimize_power_balance = online_objectives,
         )
-        r = postprocess_results(SSOA_result["all_results"], "SSOA")
+        r = postprocess_results(SSOA_result["all_results"], DC, "SSOA")
     elseif strategy == "SAA"
         SAA_result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SAA", S = S, seed = seed,
@@ -85,7 +85,7 @@ function run_experiment(
             obj_minimize_power_surplus = online_objectives,
             obj_minimize_power_balance = online_objectives,
         )
-        r = postprocess_results(SAA_result["all_results"], "SAA")
+        r = postprocess_results(SAA_result["all_results"], DC, "SAA")
     end
 
     if strategy != "oracle"
