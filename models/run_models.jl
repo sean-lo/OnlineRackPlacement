@@ -42,7 +42,10 @@ println(oracle_result["y"])
 println(oracle_result["objective"])
 println(oracle_result["time_taken"])
 
-SSOA_result = rack_placement(DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 0)
+SSOA_result = rack_placement(
+    DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 0,
+    time_limit_sec_per_iteration = 20,
+)
 SAA_result = rack_placement(DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SAA", S = 5, seed = 0)
 MPC_result = rack_placement(DC, Sim, RCoeffs, batches, batch_sizes, strategy = "MPC")
 
@@ -64,14 +67,15 @@ include("$(@__DIR__)/model.jl")
 RCoeffsD = RackPlacementCoefficientsDynamic(RCoeffs)
 RCoeffsD.row_penalties = Dict(r => RCoeffs.row_penalty for r in DC.row_IDs)
 RCoeffsD.room_penalties = Dict(m => RCoeffs.room_penalty for m in DC.room_IDs)
+RCoeffsD.room_penalties[first(DC.room_IDs)] = 0.0
 T = length(batches)
 
+all_results = Dict{String, Any}[]
 x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
 y_fixed = Dict{Tuple{Int, Int, Int}, Int}()
-time_taken = Float64[]
 strategy = "SSOA"
 S = 1
-time_limit_sec_per_iteration = 60
+time_limit_sec_per_iteration = 20
 time_limit_sec = 0
 start_time = time()
 env = Gurobi.Env()
@@ -98,32 +102,6 @@ results_objs = build_solve_incremental_model(
     sim_batch_sizes = sim_batch_sizes,
     S = S,
     env = env,
-    obj_minimize_rooms = true,
-    obj_minimize_rows = true,
-    obj_minimize_tilegroups = true,
-    MIPGap = MIPGap,
-    time_limit_sec = max(
-        time_limit_sec_per_iteration,
-        time_limit_sec - (time() - start_time),
-    )
-)
-results = build_solve_incremental_model(
-    x_fixed,
-    y_fixed,
-    DC,
-    t,
-    T,
-    batches,
-    batch_sizes,
-    strategy,
-    RCoeffsD,
-    sim_batches = sim_batches,
-    sim_batch_sizes = sim_batch_sizes,
-    S = S,
-    env = env,
-    obj_minimize_rooms = false,
-    obj_minimize_rows = false,
-    obj_minimize_tilegroups = false,
     MIPGap = MIPGap,
     time_limit_sec = max(
         time_limit_sec_per_iteration,
@@ -131,34 +109,9 @@ results = build_solve_incremental_model(
     )
 )
 
-results["current_reward"]
-results_objs["current_reward"]
+merge!(x_fixed, results_objs["x"])
+merge!(y_fixed, results_objs["y"])
 
-results_objs["room_penalty"]
-results_objs["row_penalty"]
-results_objs["tilegroup_penalty"]
-
-results["future_assignment"]
-results_objs["future_assignment"]
-
-results["x"]
-results_objs["x"]
-
-row_size_utils = [
-    sum(
-        [batches[t]["size"][i] * results["y"][(t, i, r)]
-        for i in 1:length(batches[t]["size"])
-            if (t, i, r) in keys(results["y"])],
-        init = 0.0
-    )
-    for r in DC.row_IDs
-]
-map(
-    x -> (x <= 0 ? 2 : (x <= 10 ? 1 : 0)),
-    row_size_utils
-)
-
-findall(x -> x > 0, row_size_utils)
-
-RCoeffs.row_penalty = 2.0
-
+update_metrics!(DC, results_objs)
+push!(all_results, deepcopy(results_objs))
+update_dynamic_parameters!(RCoeffsD, DC, results_objs)
