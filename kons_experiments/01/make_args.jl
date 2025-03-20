@@ -18,6 +18,8 @@ demand_fps = fps["demand_fps"]
 
 discount_factor_range = [0.1, 1.0]
 online_objectives_range = [false, true]
+use_batching_range = [true]
+batch_size_range = [10]
 
 args_df = DataFrame(
     run_ind = Int[],
@@ -27,6 +29,8 @@ args_df = DataFrame(
     method = String[],
     # Index of method
     nummethod = Int[],
+    use_batching = Bool[],
+    batch_size = Int[],
     online_objectives = Bool[],
     discount_factor = Float64[],
     # Number of sample paths (for SAA)
@@ -42,26 +46,33 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
                 run_ind, 
                 datacenter_dir, distr_dir, demand_fp,
                 method, nummethod,
+                true, 0, 
                 false, 0.0, 
                 1, 1,
             ))
         elseif method == "myopic"
-            for online_objectives in online_objectives_range
+            for online_objectives in online_objectives_range,
+                use_batching in use_batching_range,
+                batch_size in batch_size_range
                 push!(args_df, (
                     run_ind, 
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
+                    use_batching, batch_size,
                     online_objectives, 0.0, 
                     1, 1,
                 ))
             end
         elseif method == "MPC"
             for discount_factor in discount_factor_range,
-                online_objectives in online_objectives_range
+                online_objectives in online_objectives_range,
+                use_batching in use_batching_range,
+                batch_size in batch_size_range
                 push!(args_df, (
                     run_ind, 
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
+                    use_batching, batch_size,
                     online_objectives, discount_factor, 
                     1, 1,
                 ))
@@ -69,11 +80,14 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
         elseif method == "SSOA"
             for discount_factor in discount_factor_range,
                 online_objectives in online_objectives_range,
+                use_batching in use_batching_range,
+                batch_size in batch_size_range,
                 seed in seed_range
                 push!(args_df, (
                     run_ind, 
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
+                    use_batching, batch_size,
                     online_objectives, discount_factor, 
                     1, seed,
                 ))
@@ -81,12 +95,15 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
         elseif method == "SAA"
             for discount_factor in discount_factor_range,
                 online_objectives in online_objectives_range,
+                use_batching in use_batching_range,
+                batch_size in batch_size_range,
                 seed in seed_range,
                 S in S_list
                 push!(args_df, (
                     run_ind,     
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
+                    use_batching, batch_size,
                     online_objectives, discount_factor, 
                     S, seed,
                 ))

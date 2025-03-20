@@ -18,6 +18,7 @@ function run_instance(
         run_ind, 
         datacenter_dir, distr_dir, demand_fp,
         method, nummethod,
+        use_batching, batch_size,
         online_objectives, discount_factor, 
         S, seed,
     ) = args_df[row_index, :]
@@ -37,6 +38,8 @@ function run_instance(
         write = write,
         env = GRB_ENV,
         strategy = method,
+        use_batching = use_batching,
+        batch_size = batch_size,
         discount_factor = discount_factor,
         time_limit_sec_per_iteration = time_limit_sec_per_iteration,
         online_objectives = online_objectives,
