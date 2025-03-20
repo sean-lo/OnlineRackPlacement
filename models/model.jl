@@ -645,8 +645,8 @@ function build_solve_incremental_model(
         "current_reward" => JuMP.value(current_reward),
         "current_assignment" => JuMP.value(current_assignment),
         "space" => Dict(
-            r => JuMP.value(space_now[r])
-            for r in DC.row_IDs
+            j => JuMP.value(space_now[j])
+            for j in DC.tilegroup_IDs
         ),
         "cooling" => Dict(
             c => JuMP.value(cooling_now[c]) 
