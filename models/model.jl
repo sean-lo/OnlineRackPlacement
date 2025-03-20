@@ -95,6 +95,7 @@ function rack_placement_oracle(
         "x" => x_result,
         "y" => y_result,
         "objective" => JuMP.objective_value(model),
+        "optimality_gap" => JuMP.relative_gap(model),
         "time_taken" => time() - start_time,
     )
 end
