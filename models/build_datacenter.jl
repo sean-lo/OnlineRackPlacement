@@ -119,7 +119,7 @@ function build_datacenter(
         data["tiles"]
         |> x -> groupby(x, :roomID)
         |> x -> Dict(
-            y[!, :roomID][1] => collect(y[!, :rowID])
+            y[!, :roomID][1] => unique(collect(y[!, :rowID]))
             for y in x
         )
     )
@@ -128,7 +128,7 @@ function build_datacenter(
         data["tiles"]
         |> x -> groupby(x, :rowID)
         |> x -> Dict(
-            y[!, :rowID][1] => collect(y[!, :tileID])
+            y[!, :rowID][1] => unique(collect(y[!, :tileID]))
             for y in x
         )
     )
