@@ -11,6 +11,8 @@ using Parameters
 using Random
 using StatsBase
 using JSON
+using Combinatorics
+using Printf
 
 include("$(@__DIR__)/parameters.jl")
 include("$(@__DIR__)/build_datacenter.jl")
