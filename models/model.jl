@@ -637,9 +637,6 @@ function build_solve_incremental_model(
     results = Dict(
         "x" => x_fixed_new,
         "y" => y_fixed_new,
-        "w" => JuMP.value.(w_now),
-        "z" => JuMP.value.(z_now),
-        "v" => JuMP.value.(v_now),
         "time_taken" => time() - start_time,
         "objective" => JuMP.objective_value(model),
         "optimality_gap" => JuMP.relative_gap(model),
@@ -667,12 +664,15 @@ function build_solve_incremental_model(
         results["future_assignment"] = JuMP.value(future_assignment)
     end
     if obj_minimize_rooms
+        results["w"] = JuMP.value.(w_now)
         results["room_penalty"] = JuMP.value(room_penalty)
     end
     if obj_minimize_rows
+        results["z"] = JuMP.value.(z_now)
         results["row_penalty"] = JuMP.value(row_penalty)
     end
     if obj_minimize_tilegroups
+        results["v"] = JuMP.value.(v_now)
         results["tilegroup_penalty"] = JuMP.value(tilegroup_penalty)
     end
     if obj_minimize_power_surplus || obj_minimize_power_balance
@@ -922,18 +922,20 @@ function postprocess_results(
         ]
         for p in DC.toppower_IDs
     ))
-    toppower_pair_utilization_data = DataFrame(Dict(
-        "$(p1), $(p2)" => [
-            all_results[t]["toppower_pair_utilization"][(m, p1, p2)]
-            for t in 1:length(all_results)
-        ]
-        for m in DC.room_IDs
-            for (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
-    ))
-    return Dict(
+    result = Dict(
         "iteration_data" => iteration_data,
         "room_space_utilization_data" => room_space_utilization_data,
         "toppower_utilization_data" => toppower_utilization_data,
-        "toppower_pair_utilization_data" => toppower_pair_utilization_data,
     )
+    if obj_minimize_power_surplus || obj_minimize_power_balance
+        result["toppower_pair_utilization_data"] = DataFrame(Dict(
+            "$(p1), $(p2)" => [
+                all_results[t]["toppower_pair_utilization"][(m, p1, p2)]
+                for t in 1:length(all_results)
+            ]
+            for m in DC.room_IDs
+                for (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
+        ))
+    end
+    return result
 end
