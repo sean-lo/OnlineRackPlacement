@@ -96,7 +96,7 @@ function build_datacenter(
             if !haskey(data, key)
     ]
     if !isempty(missing_keys)
-        error("Missing required data: " * join(missing_keys, ", "))
+        error("Missing required data: $(join(missing_keys, ", "))\n$(joinpath(pwd(), input_dir))")
     end
     data = Dict(key => data[key] for key in used_keys)
 
