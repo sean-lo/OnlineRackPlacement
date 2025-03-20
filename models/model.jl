@@ -860,18 +860,18 @@ function update_dynamic_parameters!(
     
     RCoeffsD.row_penalties = Dict(
         r => (
-            results["row_space_utilizations"][r] <= 0 ? 2.0 : (
-                results["row_space_utilizations"][r] <= 10 ? 1.0 : 0.0
+            results["row_space_utilizations"][r] <= 0 ? (2.0 * RCoeffsD.row_mult) : (
+                results["row_space_utilizations"][r] <= 10 ? (1.0 * RCoeffsD.row_mult) : 0.0
             )
         )
         for r in DC.row_IDs
     )
     RCoeffsD.room_penalties = Dict(
         m => (
-            results["room_space_utilizations"][m] <= 0 ? 40.0 : (
+            results["room_space_utilizations"][m] <= 0 ? (40.0 * RCoeffsD.room_mult) : (
                 results["room_space_utilizations"][m] <= 0.3 * (
                     length(DC.room_rows_map[m]) * 20 # Number of tiles in room m
-                ) ? 3.0 : 0.0
+                ) ? (3.0 * RCoeffsD.room_mult) : 0.0
             )
         )
         for m in DC.room_IDs
@@ -947,14 +947,16 @@ function postprocess_results(
     )
     room_space_utilization_data = DataFrame(Dict(
         "$m" => [
-            all_results[t]["room_space_utilizations"][m]
+            all_results[t]["room_space_utilizations"][m] / (
+                length(DC.room_rows_map[m]) * 20 # Number of tiles in room m
+            )
             for t in 1:length(all_results)
         ]
         for m in DC.room_IDs
     ))
     toppower_utilization_data = DataFrame(Dict(
         "$p" => [
-            all_results[t]["toppower_utilizations"][p]
+            all_results[t]["toppower_utilizations"][p] / DC.power_capacity[p]
             for t in 1:length(all_results)
         ]
         for p in DC.toppower_IDs
@@ -967,7 +969,7 @@ function postprocess_results(
     if obj_minimize_power_surplus || obj_minimize_power_balance
         result["toppower_pair_utilization_data"] = DataFrame(Dict(
             "$(p1), $(p2)" => [
-                all_results[t]["toppower_pair_utilization"][(m, p1, p2)]
+                all_results[t]["toppower_pair_utilization"][(m, p1, p2)] / DC.power_balanced_capacity[m]
                 for t in 1:length(all_results)
             ]
             for m in DC.room_IDs

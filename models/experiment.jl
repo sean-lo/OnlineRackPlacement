@@ -34,7 +34,16 @@ function run_experiment(
     discount_factor::Float64 = 0.1,
     use_batching::Bool = false,
     batch_size::Int = CONST_BATCH_SIZE,
-    online_objectives::Bool = true,
+    obj_minimize_rooms::Bool = true,
+    obj_minimize_rows::Bool = true,
+    obj_minimize_tilegroups::Bool = true,
+    obj_minimize_power_surplus::Bool = true,
+    obj_minimize_power_balance::Bool = true,
+    room_mult::Float64 = 1.0,
+    row_mult::Float64 = 1.0,
+    tilegroup_penalty::Float64 = 1.0,
+    power_surplus_penalty::Float64 = 1e-3,
+    power_balance_penalty::Float64 = 1e-5,
     S::Int = 1,
     seed::Int = 0,
     MIPGap::Float64 = 1e-4,
@@ -44,6 +53,11 @@ function run_experiment(
         env = Gurobi.Env()
     end
     RCoeffs = RackPlacementCoefficients(
+        room_mult = (obj_minimize_rooms ? room_mult : 0.0),
+        row_mult = (obj_minimize_rows ? row_mult : 0.0),
+        tilegroup_penalty = (obj_minimize_tilegroups ? tilegroup_penalty : 0.0),
+        power_surplus_penalty = (obj_minimize_power_surplus ? power_surplus_penalty : 0.0),
+        power_balance_penalty = (obj_minimize_power_balance ? power_balance_penalty : 0.0),
         discount_factor = discount_factor,
     )
 
@@ -52,6 +66,7 @@ function run_experiment(
     batches, batch_sizes = read_demand(demand_fp, RCoeffs, use_batching, batch_size)
     
     if strategy == "oracle"
+        result = rack_placement_oracle(batches, batch_sizes, DC, env, time_limit_sec_per_iteration)
         r = postprocess_results_oracle(DC, result, batches, batch_sizes)
     elseif strategy == "myopic"
         result = rack_placement(
@@ -59,20 +74,20 @@ function run_experiment(
             env = env,
             strategy = "myopic",
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
         )
         r = postprocess_results(
             result["all_results"], DC, "myopic";
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "MPC"
         result = rack_placement(
@@ -80,20 +95,20 @@ function run_experiment(
             env = env,
             strategy = "MPC",
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
         )
         r = postprocess_results(
             result["all_results"], DC, "MPC";
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "SSOA"
         result = rack_placement(
@@ -101,20 +116,20 @@ function run_experiment(
             env = env,
             strategy = "SSOA", S = 1, seed = seed,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
         )
         r = postprocess_results(
             result["all_results"], DC, "SSOA";
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "SAA"
         result = rack_placement(
@@ -122,29 +137,30 @@ function run_experiment(
             env = env,
             strategy = "SAA", S = S, seed = seed,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
         )
         r = postprocess_results(
             result["all_results"], DC, "SAA";
-            obj_minimize_rooms = online_objectives,
-            obj_minimize_rows = online_objectives,
-            obj_minimize_tilegroups = online_objectives,
-            obj_minimize_power_surplus = online_objectives,
-            obj_minimize_power_balance = online_objectives,
+            obj_minimize_rooms = obj_minimize_rooms,
+            obj_minimize_rows = obj_minimize_rows,
+            obj_minimize_tilegroups = obj_minimize_tilegroups,
+            obj_minimize_power_surplus = obj_minimize_power_surplus,
+            obj_minimize_power_balance = obj_minimize_power_balance,
         )
     end
 
-    if write 
+    if write
+        mkpath(result_dir)
         if strategy != "oracle"
             CSV.write("$(result_dir)/iteration_data.csv", r["iteration_data"])
             CSV.write("$(result_dir)/room_space_utilization.csv", r["room_space_utilization_data"])
-            if online_objectives
-                CSV.write("$(result_dir)/toppower_utilization.csv", r["toppower_utilization_data"])
+            CSV.write("$(result_dir)/toppower_utilization.csv", r["toppower_utilization_data"])
+            if obj_minimize_power_surplus || obj_minimize_power_balance
                 CSV.write("$(result_dir)/toppower_pair_utilization.csv", r["toppower_pair_utilization_data"])
             end
         else
@@ -154,18 +170,24 @@ function run_experiment(
 
     if strategy != "oracle"
         optimality_gap_vals = r["iteration_data"][!, "optimality_gap"]
+        optimality_gap_max = maximum(optimality_gap_vals)
         optimality_gap_mean = StatsBase.geomean(optimality_gap_vals .+ 1.0) - 1.0
         returnval = Dict(
             "time_taken" => result["time_taken"],
+            "optimality_gap_max" => optimality_gap_max,
             "optimality_gap_mean" => optimality_gap_mean,
             "demands_placed" => Int(round((r["iteration_data"][!, "current_assignment"] |> sum) / (RCoeffs.placement_reward))),
+            "toppower_utilization" => r["toppower_utilization_data"][end, :] |> mean,
         )
     else
         optimality_gap_mean = 0.0
+        optimality_gap_max = 0.0
         returnval = Dict(
             "time_taken" => result["time_taken"],
             "optimality_gap_mean" => optimality_gap_mean,
+            "optimality_gap_max" => optimality_gap_max,
             "demands_placed" => Int(round(result["objective"] / (RCoeffs.placement_reward))),
+            "toppower_utilization" => r["toppower_utilization_data"][end, :] |> mean,
         )
     end
 
