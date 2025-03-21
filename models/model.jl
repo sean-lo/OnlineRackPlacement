@@ -778,7 +778,7 @@ function rack_placement(
         # Simulate
         if strategy in ["SSOA", "SAA", "MPC"]
             sim_batches, sim_batch_sizes = simulate_batches(
-                strategy, Sim, RCoeffsD,
+                strategy, Sim, RCoeffsD.placement_reward,
                 t, T,
                 batch_sizes, S,
             )

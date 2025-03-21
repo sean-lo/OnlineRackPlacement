@@ -84,7 +84,7 @@ MIPGap = 1e-4
 t = 1
 
 sim_batches, sim_batch_sizes = simulate_batches(
-    strategy, Sim, RCoeffsD,
+    strategy, Sim, RCoeffsD.placement_reward,
     t, T,
     batch_sizes, S,
 )
