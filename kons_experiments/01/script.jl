@@ -10,7 +10,8 @@ function run_instance(
     args_df, row_index,
     ;
     write::Bool = true,
-    result_dir::String = "$(@__DIR__)/logs/$row_index",
+    log_dir::String = "$(@__DIR__)/logs/$row_index",
+    results_dir::String = "$(@__DIR__)/results",
     time_limit_sec_per_iteration = 300.0,
 )
 
@@ -19,21 +20,29 @@ function run_instance(
         datacenter_dir, distr_dir, demand_fp,
         method, nummethod,
         use_batching, batch_size,
-        online_objectives, discount_factor, 
+        obj_minimize_rooms,
+        obj_minimize_rows,
+        obj_minimize_tilegroups,
+        obj_minimize_power_surplus,
+        obj_minimize_power_balance, 
+        room_mult,
+        row_mult,
+        tilegroup_penalty,
+        power_surplus_penalty,
+        power_balance_penalty,
+        discount_factor, 
         S, seed,
     ) = args_df[row_index, :]
-    datacenter_dir = String(datacenter_dir)
-    distr_dir = String(distr_dir)
-    demand_fp = String(demand_fp)
+    datacenter_dir = String("$(@__DIR__)/$datacenter_dir")
+    distr_dir = String("$(@__DIR__)/$distr_dir")
+    demand_fp = String("$(@__DIR__)/$demand_fp")
     method = String(method)
-
-    mkpath(result_dir)
 
     results = run_experiment(
         datacenter_dir,
         distr_dir,
         demand_fp,
-        result_dir,
+        log_dir,
         ;
         write = write,
         env = GRB_ENV,
@@ -42,7 +51,16 @@ function run_instance(
         batch_size = batch_size,
         discount_factor = discount_factor,
         time_limit_sec_per_iteration = time_limit_sec_per_iteration,
-        online_objectives = online_objectives,
+        obj_minimize_rooms = obj_minimize_rooms,
+        obj_minimize_rows = obj_minimize_rows,
+        obj_minimize_tilegroups = obj_minimize_tilegroups,
+        obj_minimize_power_surplus = obj_minimize_power_surplus,
+        obj_minimize_power_balance = obj_minimize_power_balance, 
+        room_mult = room_mult,
+        row_mult = row_mult,
+        tilegroup_penalty = tilegroup_penalty,
+        power_surplus_penalty = power_surplus_penalty,
+        power_balance_penalty = power_balance_penalty,
         seed = seed,
         MIPGap = 1e-4,
     )
@@ -54,40 +72,53 @@ function run_instance(
         demand_fp = demand_fp,
         method = method, 
         nummethod = nummethod,
-        online_objectives = online_objectives, 
+        use_batching = use_batching,
+        batch_size = batch_size,
         discount_factor = discount_factor, 
+        time_limit_sec_per_iteration = time_limit_sec_per_iteration,
+        obj_minimize_rooms = obj_minimize_rooms,
+        obj_minimize_rows = obj_minimize_rows,
+        obj_minimize_tilegroups = obj_minimize_tilegroups,
+        obj_minimize_power_surplus = obj_minimize_power_surplus,
+        obj_minimize_power_balance = obj_minimize_power_balance, 
+        room_mult = room_mult,
+        row_mult = row_mult,
+        tilegroup_penalty = tilegroup_penalty,
+        power_surplus_penalty = power_surplus_penalty,
+        power_balance_penalty = power_balance_penalty,
         S = S, 
         seed = seed,
         total_time = results["time_taken"],
         optimality_gap_mean = results["optimality_gap_mean"],
         demands_placed = results["demands_placed"],
     )]
-    write && CSV.write("$(@__DIR__)/results/$row_index.csv", DataFrame(records))
+    write && mkpath(results_dir)
+    write && CSV.write(joinpath(results_dir, "$row_index.csv"), DataFrame(records))
     return
 end
 
 
 
-# test_args_df = CSV.read("$(@__DIR__)/test_args.csv", DataFrame)
-# args_df = CSV.read("$(@__DIR__)/args.csv", DataFrame)
-# task_index = parse(Int, ARGS[1]) + 1
-# n_tasks = parse(Int, ARGS[2])
+test_args_df = CSV.read("$(@__DIR__)/test_args.csv", DataFrame)
+args_df = CSV.read("$(@__DIR__)/args.csv", DataFrame)
+task_index = parse(Int, ARGS[1]) + 1
+n_tasks = parse(Int, ARGS[2])
 
-# for row_index in 1:1:size(test_args_df, 1)
-#     run_instance(
-#         test_args_df, row_index,
-#         ;
-#         write = false,
-#         time_limit_sec_per_iteration = 10.0,
-#     )
-# end
+for row_index in 1:1:size(test_args_df, 1)
+    run_instance(
+        test_args_df, row_index,
+        ;
+        write = false,
+        time_limit_sec_per_iteration = 10.0,
+    )
+end
 
 undone_indexes = [
     row_index for row_index in 1:nrow(args_df) 
     if !isfile("$(@__DIR__)/results/$row_index.csv")
 ]
-# for row_index in undone_indexes[task_index:n_tasks:length(undone_indexes)]
-for row_index in undone_indexes
+for row_index in undone_indexes[task_index:n_tasks:length(undone_indexes)]
+# for row_index in undone_indexes
     if isfile("$(@__DIR__)/results/$row_index.csv")
         continue
     end
