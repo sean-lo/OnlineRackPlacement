@@ -46,7 +46,7 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
                 run_ind, 
                 datacenter_dir, distr_dir, demand_fp,
                 method, nummethod,
-                true, 0, 
+                true, 1, 
                 false, 0.0, 
                 1, 1,
             ))
