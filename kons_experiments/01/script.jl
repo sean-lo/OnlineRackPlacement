@@ -89,8 +89,10 @@ function run_instance(
         S = S, 
         seed = seed,
         total_time = results["time_taken"],
+        optimality_gap_max = results["optimality_gap_max"],
         optimality_gap_mean = results["optimality_gap_mean"],
         demands_placed = results["demands_placed"],
+        toppower_utilization = results["toppower_utilization"],
     )]
     write && mkpath(results_dir)
     write && CSV.write(joinpath(results_dir, "$row_index.csv"), DataFrame(records))
