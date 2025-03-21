@@ -16,10 +16,26 @@ datacenter_dir = fps["datacenter_dir"]
 distr_dir = fps["distr_dir"]
 demand_fps = fps["demand_fps"]
 
-discount_factor_range = [0.1, 1.0]
-online_objectives_range = [false, true]
-use_batching_range = [true]
+discount_factor_range = [0.1, 0.5, 1.0]
+use_batching_range = [false]
 batch_size_range = [10]
+online_objectives_range = [
+    # obj_minimize_rooms
+    # obj_minimize_rows
+    # obj_minimize_tilegroups
+    # obj_minimize_power_surplus
+    # obj_minimize_power_balance
+    (false, false, false, false, false),
+    (false, true, false, true, true),
+]
+online_params = [
+    # room_mult,
+    # row_mult,
+    # tilegroup_penalty,
+    # power_surplus_penalty,
+    # power_balance_penalty,
+    (0.0, 1.0, 0.0, 1e-3, 1e-5)
+]
 
 args_df = DataFrame(
     run_ind = Int[],
@@ -31,7 +47,16 @@ args_df = DataFrame(
     nummethod = Int[],
     use_batching = Bool[],
     batch_size = Int[],
-    online_objectives = Bool[],
+    obj_minimize_rooms = Bool[],
+    obj_minimize_rows = Bool[],
+    obj_minimize_tilegroups = Bool[],
+    obj_minimize_power_surplus = Bool[],
+    obj_minimize_power_balance = Bool[],
+    room_mult = Float64[],
+    row_mult = Float64[],
+    tilegroup_penalty = Float64[],
+    power_surplus_penalty = Float64[],
+    power_balance_penalty = Float64[],
     discount_factor = Float64[],
     # Number of sample paths (for SAA)
     S = Int[],
@@ -46,8 +71,10 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
                 run_ind, 
                 datacenter_dir, distr_dir, demand_fp,
                 method, nummethod,
-                true, 1, 
-                false, 0.0, 
+                false, batch_size_range[1],
+                online_objectives_range[1]...,
+                online_params[1]...,
+                0.0, 
                 1, 1,
             ))
         elseif method == "myopic"
@@ -59,7 +86,8 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
                     use_batching, batch_size,
-                    online_objectives, 0.0, 
+                    online_objectives...,
+                    online_params[1]..., 0.0, 
                     1, 1,
                 ))
             end
@@ -73,7 +101,8 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
                     use_batching, batch_size,
-                    online_objectives, discount_factor, 
+                    online_objectives...,
+                    online_params[1]..., discount_factor, 
                     1, 1,
                 ))
             end
@@ -88,7 +117,8 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
                     use_batching, batch_size,
-                    online_objectives, discount_factor, 
+                    online_objectives...,
+                    online_params[1]..., discount_factor, 
                     1, seed,
                 ))
             end
@@ -104,7 +134,8 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
                     datacenter_dir, distr_dir, demand_fp,
                     method, nummethod,
                     use_batching, batch_size,
-                    online_objectives, discount_factor, 
+                    online_objectives...,
+                    online_params[1]..., discount_factor, 
                     S, seed,
                 ))
             end
@@ -112,13 +143,13 @@ for (run_ind, demand_fp) in enumerate(demand_fps)
     end
 end
 
-sort!(args_df, [:nummethod, :online_objectives, :discount_factor, :S, :seed])
+sort!(args_df, [:nummethod, :obj_minimize_rows, :discount_factor, :S, :seed])
 CSV.write("$(@__DIR__)/args.csv", args_df)
 
 test_args_df = filter(
     r -> r.method == "oracle" || (
         r.run_ind == 1
-        && r.online_objectives == true
+        && r.obj_minimize_rows == true
         && r.seed == 1
     ),
     args_df
