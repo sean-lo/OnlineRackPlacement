@@ -67,7 +67,7 @@ function run_experiment(
     
     if strategy == "oracle"
         result = rack_placement_oracle(batches, batch_sizes, DC, env, time_limit_sec_per_iteration)
-        r = postprocess_results_oracle(DC, result, batches, batch_sizes)
+        r = postprocess_results_oracle(DC, result, batches)
     elseif strategy == "myopic"
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
@@ -177,17 +177,17 @@ function run_experiment(
             "optimality_gap_max" => optimality_gap_max,
             "optimality_gap_mean" => optimality_gap_mean,
             "demands_placed" => Int(round((r["iteration_data"][!, "current_assignment"] |> sum) / (RCoeffs.placement_reward))),
-            "toppower_utilization" => r["toppower_utilization_data"][end, :] |> mean,
+            "toppower_utilization" => r["toppower_utilization"],
         )
     else
-        optimality_gap_mean = 0.0
         optimality_gap_max = 0.0
+        optimality_gap_mean = 0.0
         returnval = Dict(
             "time_taken" => result["time_taken"],
-            "optimality_gap_mean" => optimality_gap_mean,
             "optimality_gap_max" => optimality_gap_max,
+            "optimality_gap_mean" => optimality_gap_mean,
             "demands_placed" => Int(round(result["objective"] / (RCoeffs.placement_reward))),
-            "toppower_utilization" => r["toppower_utilization_data"][end, :] |> mean,
+            "toppower_utilization" => r["toppower_utilization"],
         )
     end
 
