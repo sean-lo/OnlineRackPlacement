@@ -921,6 +921,7 @@ function postprocess_results(
 )
     keys_totake = [
         "time_taken", "optimality_gap",
+        "objective",
         "current_reward", 
         "current_assignment",
     ]
