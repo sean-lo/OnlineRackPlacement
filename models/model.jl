@@ -105,7 +105,6 @@ function postprocess_results_oracle(
     DC::DataCenter,
     results::Dict{String, Any},
     batches::Dict{Int, Dict{String, Any}},
-    batch_sizes::Dict{Int, Int},
     ;
 )
     T = length(batches)
@@ -113,10 +112,8 @@ function postprocess_results_oracle(
         "$m" => [
             sum(
                 results["x"][(t,i,j)]
-                for t in 1:T, i in 1:batch_sizes[t], j in DC.room_tilegroups_map[m]
-                    if (t,i,j) in keys(results["x"])
-            ) / (
-                length(DC.room_rows_map[m]) * 20 # Number of tiles in room m
+                for (t,i,j) in keys(results["x"])
+                    if j in DC.room_tilegroups_map[m]
             )
         ]
         for m in DC.room_IDs
@@ -125,15 +122,20 @@ function postprocess_results_oracle(
         "$p" => [
             sum(
                 (batches[t]["power"][i] / 2) * results["x"][(t,i,j)]
-                for t in 1:T, i in 1:batch_sizes[t], j in DC.power_tilegroups_map[p]
-                    if (t,i,j) in keys(results["x"])
-            ) / DC.power_capacity[p]
+                for (t,i,j) in keys(results["x"])
+                    if j in DC.power_tilegroups_map[p]
+            )
         ] 
         for p in DC.toppower_IDs
     ))
     return Dict(
         "room_space_utilization_data" => room_space_utilization_data,
         "toppower_utilization_data" => toppower_utilization_data,
+        "toppower_utilization" => (
+            toppower_utilization_data[end, :] |> sum
+        ) / (
+            sum(DC.power_capacity[p] for p in DC.toppower_IDs)
+        ),
     )
 end
 
@@ -947,16 +949,14 @@ function postprocess_results(
     )
     room_space_utilization_data = DataFrame(Dict(
         "$m" => [
-            all_results[t]["room_space_utilizations"][m] / (
-                length(DC.room_rows_map[m]) * 20 # Number of tiles in room m
-            )
+            all_results[t]["room_space_utilizations"][m]
             for t in 1:length(all_results)
         ]
         for m in DC.room_IDs
     ))
     toppower_utilization_data = DataFrame(Dict(
         "$p" => [
-            all_results[t]["toppower_utilizations"][p] / DC.power_capacity[p]
+            all_results[t]["toppower_utilizations"][p]
             for t in 1:length(all_results)
         ]
         for p in DC.toppower_IDs
@@ -965,6 +965,11 @@ function postprocess_results(
         "iteration_data" => iteration_data,
         "room_space_utilization_data" => room_space_utilization_data,
         "toppower_utilization_data" => toppower_utilization_data,
+        "toppower_utilization" => (
+            toppower_utilization_data[end, :] |> sum
+        ) / (
+            sum(DC.power_capacity[p] for p in DC.toppower_IDs)
+        ),
     )
     if obj_minimize_power_surplus || obj_minimize_power_balance
         result["toppower_pair_utilization_data"] = DataFrame(Dict(
