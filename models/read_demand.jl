@@ -3,7 +3,8 @@ include("$(@__DIR__)/parameters.jl")
 
 function read_demand(
     demand_fp::String,
-    RCoeffs::RackPlacementCoefficients,
+    placement_reward::Float64,
+    placement_var_reward::Float64 = 0.0,
     use_batching::Bool = false,
     batch_size::Int = CONST_BATCH_SIZE,
 )
@@ -12,12 +13,13 @@ function read_demand(
         T = maximum(demand_data[!, :batchID])
         batches = Dict{Int, Dict{String, Any}}()
         for t in 1:T
+            sizes = demand_data[demand_data[!, :batchID] .== t, :size]
             batches[t] = Dict(
                 "seed" => 0,
-                "size" => demand_data[demand_data[!, :batchID] .== t, :size],
+                "size" => sizes,
                 "cooling" => demand_data[demand_data[!, :batchID] .== t, :coolingEach],
                 "power" => demand_data[demand_data[!, :batchID] .== t, :powerEach],
-                "reward" => fill(RCoeffs.placement_reward, length(demand_data[demand_data[!, :batchID] .== t, :resID])),
+                "reward" => (placement_reward .+ placement_var_reward .* sizes),
             )
         end
     else
@@ -28,7 +30,7 @@ function read_demand(
                 "size" => demand_data[inds, :size],
                 "cooling" => demand_data[inds, :coolingEach],
                 "power" => demand_data[inds, :powerEach],
-                "reward" => fill(RCoeffs.placement_reward, length(demand_data[inds, :resID])),
+                "reward" => (placement_reward .+ placement_var_reward .* demand_data[inds, :size]),
             )
             for (t, inds) in enumerate(Iterators.partition(1:nrow(demand_data), batch_size))
         )

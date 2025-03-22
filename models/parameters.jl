@@ -1,6 +1,7 @@
 using Parameters
 @with_kw struct RackPlacementCoefficients
     placement_reward::Float64 = 200.0
+    placement_var_reward::Float64 = 0.0
     discount_factor::Float64 = 0.1
     room_penalty::Float64 = 40.0 # 40, 3, 0 (at 0, 0.2, 1.0)
     room_mult::Float64 = 1.0
@@ -15,6 +16,7 @@ end
 
 @with_kw mutable struct RackPlacementCoefficientsDynamic
     placement_reward::Float64
+    placement_var_reward::Float64
     discount_factor::Float64
     room_penalty::Float64
     room_mult::Float64
@@ -34,6 +36,7 @@ function RackPlacementCoefficientsDynamic(
 )
     return RackPlacementCoefficientsDynamic(
         placement_reward = RCoeffs.placement_reward,
+        placement_var_reward = RCoeffs.placement_var_reward,
         discount_factor = RCoeffs.discount_factor,
         room_penalty = RCoeffs.room_penalty,
         room_mult = RCoeffs.room_mult,

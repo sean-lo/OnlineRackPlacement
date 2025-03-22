@@ -737,6 +737,8 @@ function rack_placement(
     batches::Dict{Int, Dict{String, Any}},
     batch_sizes::Dict{Int, Int}, 
     ;
+    all_sim_batches::Union{Dict{Int, Dict{Int, Dict{String, Any}}}, Nothing} = nothing,
+    all_sim_batch_sizes::Union{Dict{Int, Dict{Int, Int}}, Nothing} = nothing,
     env::Union{Gurobi.Env, Nothing} = nothing,
     strategy::String = "SSOA",
     S::Int = 1, # Number of sample paths
@@ -777,11 +779,18 @@ function rack_placement(
 
         # Simulate
         if strategy in ["SSOA", "SAA", "MPC"]
-            sim_batches, sim_batch_sizes = simulate_batches(
-                strategy, Sim, RCoeffsD.placement_reward,
-                t, T,
-                batch_sizes, S,
-            )
+            if isnothing(all_sim_batches)
+                sim_batches, sim_batch_sizes = simulate_batches(
+                    strategy, Sim, 
+                    RCoeffsD.placement_reward,
+                    RCoeffsD.placement_var_reward,
+                    t, T,
+                    batch_sizes, S,
+                )
+            else
+                sim_batches = all_sim_batches[t]
+                sim_batch_sizes = all_sim_batch_sizes[t]
+            end
         else
             sim_batches, sim_batch_sizes = nothing, nothing
         end
@@ -823,13 +832,19 @@ function rack_placement(
                 println("Future assignment:   $(results["future_assignment"])")
             end
             if obj_minimize_rooms
-                @printf("Room penalty:        %.2f\n", results["room_penalty"])
+                @printf("Room penalty:          %.2f\n", results["room_penalty"])
             end
             if obj_minimize_rows
-                @printf("Row penalty:         %.2f\n", results["row_penalty"])
+                @printf("Row penalty:           %.2f\n", results["row_penalty"])
             end
             if obj_minimize_tilegroups
-                @printf("Tilegroup penalty:   %.2f\n", results["tilegroup_penalty"])
+                @printf("Tilegroup penalty:     %.2f\n", results["tilegroup_penalty"])
+            end
+            if obj_minimize_power_surplus
+                @printf("Power surplus penalty: %.2f\n", results["power_surplus_penalty"])
+            end
+            if obj_minimize_power_balance
+                @printf("Power balance penalty: %.2f\n", results["power_balance_penalty"])
             end
             println("--------------------------------")
         end

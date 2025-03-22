@@ -39,6 +39,8 @@ function run_experiment(
     obj_minimize_tilegroups::Bool = true,
     obj_minimize_power_surplus::Bool = true,
     obj_minimize_power_balance::Bool = true,
+    placement_reward::Float64 = 200.0,
+    placement_var_reward::Float64 = 0.0,
     room_mult::Float64 = 1.0,
     row_mult::Float64 = 1.0,
     tilegroup_penalty::Float64 = 1.0,
@@ -53,6 +55,8 @@ function run_experiment(
         env = Gurobi.Env()
     end
     RCoeffs = RackPlacementCoefficients(
+        placement_reward = placement_reward,
+        placement_var_reward = placement_var_reward,
         room_mult = (obj_minimize_rooms ? room_mult : 0.0),
         row_mult = (obj_minimize_rows ? row_mult : 0.0),
         tilegroup_penalty = (obj_minimize_tilegroups ? tilegroup_penalty : 0.0),
@@ -63,7 +67,11 @@ function run_experiment(
 
     DC = build_datacenter(datacenter_dir)
     Sim = HistoricalDemandSimulator(distr_dir)
-    batches, batch_sizes = read_demand(demand_fp, RCoeffs, use_batching, batch_size)
+    batches, batch_sizes = read_demand(
+        demand_fp, 
+        RCoeffs.placement_reward, RCoeffs.placement_var_reward, 
+        use_batching, batch_size,
+    )
     
     if strategy == "oracle"
         result = rack_placement_oracle(batches, batch_sizes, DC, env, time_limit_sec_per_iteration)
@@ -111,10 +119,17 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "SSOA"
+        all_sim_batches, all_sim_batch_sizes = simulate_batches_all(
+            strategy, Sim, 
+            RCoeffs.placement_reward, RCoeffs.placement_var_reward,
+            batch_sizes, seed,
+        )
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
             env = env,
-            strategy = "SSOA", S = 1, seed = seed,
+            strategy = "SSOA", S = 1, 
+            all_sim_batches = all_sim_batches,
+            all_sim_batch_sizes = all_sim_batch_sizes,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
@@ -132,10 +147,17 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "SAA"
+        all_sim_batches, all_sim_batch_sizes = simulate_batches_all(
+            strategy, Sim, 
+            RCoeffs.placement_reward, RCoeffs.placement_var_reward,
+            batch_sizes, seed,
+        )
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
             env = env,
-            strategy = "SAA", S = S, seed = seed,
+            strategy = "SAA", S = S, 
+            all_sim_batches = all_sim_batches,
+            all_sim_batch_sizes = all_sim_batch_sizes,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
