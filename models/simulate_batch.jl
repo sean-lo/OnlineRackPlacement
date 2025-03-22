@@ -247,6 +247,7 @@ function simulate_batches_all(
     ;
     S::Int = 1,
     seed::Union{Int, Nothing} = nothing,
+    test_run::Bool = false,
 )
     if isnothing(seed)
         seed = abs(Random.rand(Int))
@@ -267,6 +268,9 @@ function simulate_batches_all(
             S = S,
             seed = all_seeds[t],
         ))
+        if test_run
+            break
+        end
     end
     return all_sim_batches
 end

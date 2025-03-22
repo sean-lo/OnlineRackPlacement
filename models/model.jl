@@ -755,6 +755,7 @@ function rack_placement(
     time_limit_sec = 0,
     time_limit_sec_per_iteration = 60,
     verbose::Bool = true,
+    test_run::Bool = false,
 )
     if isnothing(env)
         env = Gurobi.Env()
@@ -863,6 +864,9 @@ function rack_placement(
 
         # Update dynamic parameters
         update_dynamic_parameters!(RCoeffsD, DC, results)
+        if test_run
+            break
+        end
     end
 
     return Dict(

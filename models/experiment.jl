@@ -50,6 +50,7 @@ function run_experiment(
     seed::Int = 0,
     MIPGap::Float64 = 1e-4,
     time_limit_sec_per_iteration = 300,
+    test_run::Bool = false,
     verbose::Bool = false,
 )
     if isnothing(env)
@@ -93,6 +94,7 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
             verbose = verbose,
+            test_run = test_run,
         )
         r = postprocess_results(
             result["all_results"], DC, "myopic";
@@ -115,6 +117,7 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
             verbose = verbose,
+            test_run = test_run,
         )
         r = postprocess_results(
             result["all_results"], DC, "MPC";
@@ -133,7 +136,7 @@ function run_experiment(
             ;
             S = 1,
             seed = seed,
-            batch_sizes, seed,
+            test_run = test_run,
         )
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
@@ -148,6 +151,7 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
             verbose = verbose,
+            test_run = test_run,
         )
         r = postprocess_results(
             result["all_results"], DC, "SSOA";
@@ -166,7 +170,7 @@ function run_experiment(
             ;
             S = S,
             seed = seed,
-            batch_sizes, seed,
+            test_run = test_run,
         )
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
@@ -181,6 +185,7 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
             verbose = verbose,
+            test_run = test_run,
         )
         r = postprocess_results(
             result["all_results"], DC, "SAA";
@@ -192,7 +197,7 @@ function run_experiment(
         )
     end
 
-    if write
+    if write && !test_run
         mkpath(result_dir)
         if strategy != "oracle"
             CSV.write("$(result_dir)/iteration_data.csv", r["iteration_data"])
