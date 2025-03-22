@@ -126,9 +126,13 @@ function run_experiment(
         )
     elseif strategy == "SSOA"
         verbose && println("Simulating batches for SSOA...")
-        all_sim_batches, all_sim_batch_sizes = simulate_batches_all(
+        all_sim_batches = simulate_batches_all(
             strategy, Sim, 
             RCoeffs.placement_reward, RCoeffs.placement_var_reward,
+            batch_sizes, 
+            ;
+            S = 1,
+            seed = seed,
             batch_sizes, seed,
         )
         result = rack_placement(
@@ -136,7 +140,6 @@ function run_experiment(
             env = env,
             strategy = "SSOA", S = 1, 
             all_sim_batches = all_sim_batches,
-            all_sim_batch_sizes = all_sim_batch_sizes,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
@@ -156,9 +159,13 @@ function run_experiment(
         )
     elseif strategy == "SAA"
         verbose && println("Simulating batches for SAA...")
-        all_sim_batches, all_sim_batch_sizes = simulate_batches_all(
+        all_sim_batches = simulate_batches_all(
             strategy, Sim, 
             RCoeffs.placement_reward, RCoeffs.placement_var_reward,
+            batch_sizes, 
+            ;
+            S = S,
+            seed = seed,
             batch_sizes, seed,
         )
         result = rack_placement(
@@ -166,7 +173,6 @@ function run_experiment(
             env = env,
             strategy = "SAA", S = S, 
             all_sim_batches = all_sim_batches,
-            all_sim_batch_sizes = all_sim_batch_sizes,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,

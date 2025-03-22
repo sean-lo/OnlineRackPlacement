@@ -83,10 +83,13 @@ MIPGap = 1e-4
 
 t = 1
 
-sim_batches, sim_batch_sizes = simulate_batches(
+sim_batches = simulate_batches(
     strategy, Sim, RCoeffsD.placement_reward,
     t, T,
-    batch_sizes, S,
+    batch_sizes,
+    ;
+    S = S,
+    seed = 0,
 )
 results_objs = build_solve_incremental_model(
     x_fixed,
@@ -99,7 +102,6 @@ results_objs = build_solve_incremental_model(
     strategy,
     RCoeffsD,
     sim_batches = sim_batches,
-    sim_batch_sizes = sim_batch_sizes,
     S = S,
     env = env,
     MIPGap = MIPGap,

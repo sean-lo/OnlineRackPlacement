@@ -1,9 +1,10 @@
 include("$(@__DIR__)/utils.jl")
 include("$(@__DIR__)/parameters.jl")
+
 function _qcdf_interpolated(
+    quantile::Float64,
     quantiles::Vector{Float64},
     values::Vector{T},
-    quantile::Float64,
 ) where {T <: Number}
     right_ind = findfirst(quantile .<= quantiles)
     if right_ind == 1
@@ -17,13 +18,45 @@ function _qcdf_interpolated(
     return vA + (vB - vA) * (quantile - qA) / (qB - qA)
 end
 
+function _qcdf_interpolated(
+    quantile_vals::Array{Float64},
+    quantiles::Vector{Float64},
+    values::Vector{Float64},
+)
+    right_inds = [
+        findfirst(quantile .<= quantiles)
+        for quantile in quantile_vals
+    ]
+    if any(isnothing.(right_inds))
+        error("ArgumentError: quantile = $quantile_vals not found in quantiles = $quantiles")
+    end
+    if any(right_inds .== 1)
+        error()
+    end
+    qA, vA = quantiles[right_inds .- 1], values[right_inds .- 1]
+    qB, vB = quantiles[right_inds], values[right_inds]
+    return vA .+ (vB .- vA) .* (quantile_vals .- qA) ./ (qB .- qA)
+end
+
 function _qcdf(
+    quantile::Float64,
     quantiles::Vector{Float64},
     values::Vector{T},
-    quantile::Float64,
 ) where {T <: Number}
     right_ind = findfirst(quantile .<= quantiles)
     return values[right_ind]
+end
+
+function _qcdf(
+    quantile_vals::Array{Float64},
+    quantiles::Vector{Float64},
+    values::Vector{T},
+) where {T <: Number}
+    right_inds = [
+        findfirst(quantile .<= quantiles)
+        for quantile in quantile_vals
+    ]
+    return values[right_inds]
 end
 
 struct HistoricalDemandSimulator
@@ -85,15 +118,15 @@ function simulate_demand(
     end
     Random.seed!(seed)
     size_vals = [
-        _qcdf(Sim.size_quantiles, Sim.size_endpoints, rand())
+        _qcdf(rand(), Sim.size_quantiles, Sim.size_endpoints)
         for _ in 1:batch_size
     ]
     power_vals = [
-        _qcdf_interpolated(Sim.power_quantiles, Sim.power_endpoints, rand())
+        _qcdf_interpolated(rand(), Sim.power_quantiles, Sim.power_endpoints)
         for _ in 1:batch_size
     ]
     cooling_vals = [
-        _qcdf_interpolated(Sim.cooling_quantiles, Sim.cooling_endpoints, rand())
+        _qcdf_interpolated(rand(), Sim.cooling_quantiles, Sim.cooling_endpoints)
         for _ in 1:batch_size
     ]
     return Dict(
@@ -121,6 +154,43 @@ function mean_demand(
 end
 
 
+function simulate_demands(
+    Sim::HistoricalDemandSimulator,
+    placement_reward::Float64,
+    placement_var_reward::Float64,
+    shape::Tuple{Vararg{Int}},
+    seed::Union{Int, Nothing} = nothing,
+)    
+    if isnothing(seed)
+        seed = abs(Random.rand(Int))
+    end
+    Random.seed!(seed)
+    size_vals = _qcdf(rand(Float64, shape), Sim.size_quantiles, Sim.size_endpoints)
+    power_vals = _qcdf_interpolated(rand(Float64, shape), Sim.power_quantiles, Sim.power_endpoints)
+    cooling_vals = _qcdf_interpolated(rand(Float64, shape), Sim.cooling_quantiles, Sim.cooling_endpoints)
+    return convert(Dict{String, <:Array}, Dict(
+        "size" => size_vals,
+        "power" => power_vals,
+        "cooling" => cooling_vals,
+        "reward" => placement_reward .+ placement_var_reward .* size_vals,
+    ))
+end
+
+function mean_demands(
+    Sim::HistoricalDemandSimulator,
+    placement_reward::Float64,
+    placement_var_reward::Float64,
+    shape::Tuple{Vararg{Int}},
+)
+    return convert(Dict{String, <:Array}, Dict(
+        "size" => fill(Sim.size_mean, shape),
+        "power" => fill(Sim.power_mean, shape),
+        "cooling" => fill(Sim.cooling_mean, shape),
+        "reward" => fill(placement_reward + Sim.size_mean * placement_var_reward, shape),
+    ))
+end
+
+
 function simulate_batches(
     strategy::String,
     Sim::HistoricalDemandSimulator,
@@ -128,7 +198,8 @@ function simulate_batches(
     placement_var_reward::Float64,
     t::Int,
     T::Int,
-    batch_sizes::Dict{Int, Int},
+    batch_sizes::Vector{Int},
+    ;
     S::Int = 1,
     seed::Union{Int, Nothing} = nothing,
 )
@@ -140,34 +211,31 @@ function simulate_batches(
     end
     Random.seed!(seed)
     if strategy == "SSOA"
-        sim_batches = Dict(
-            τ => simulate_demand(Sim, placement_reward, placement_var_reward, batch_sizes[τ])
-            for τ in t+1:T
-        )
-        sim_batch_sizes = Dict(
-            τ => length(sim_batches[τ]["size"])
-            for τ in t+1:T
-        )
+        sim_batches = [
+            simulate_demands(
+                Sim, placement_reward, placement_var_reward,
+                (maximum(batch_sizes[t+1:T]),),
+            )
+            for _ in 1:T-t
+        ]
     elseif strategy == "SAA"
-        sim_batches = Dict(
-            (τ, s) => simulate_demand(Sim, placement_reward, placement_var_reward, batch_sizes[τ])
-            for τ in t+1:T, s in 1:S
-        )
-        sim_batch_sizes = Dict(
-            (τ, s) => length(sim_batches[(τ, s)]["size"])
-            for τ in t+1:T, s in 1:S
-        )
+        sim_batches = [
+            simulate_demands(
+                Sim, placement_reward, placement_var_reward,
+                (S, maximum(batch_sizes[t+1:T]),),
+            )
+            for _ in 1:T-t
+        ]
     elseif strategy == "MPC"
-        sim_batches = Dict(
-            τ => mean_demand(Sim, placement_reward, placement_var_reward, batch_sizes[τ])
-            for τ in t+1:T
-        )
-        sim_batch_sizes = Dict(
-            τ => length(sim_batches[τ]["size"])
-            for τ in t+1:T
-        )
+        sim_batches = [
+            mean_demands(
+                Sim, placement_reward, placement_var_reward,
+                (maximum(batch_sizes[t+1:T]),),
+            )
+            for _ in 1:T-t
+        ]
     end
-    return sim_batches, sim_batch_sizes
+    return sim_batches
 end
 
 function simulate_batches_all(
@@ -175,7 +243,9 @@ function simulate_batches_all(
     Sim::HistoricalDemandSimulator,
     placement_reward::Float64,
     placement_var_reward::Float64,
-    batch_sizes::Dict{Int, Int},
+    batch_sizes::Vector{Int},
+    ;
+    S::Int = 1,
     seed::Union{Int, Nothing} = nothing,
 )
     if isnothing(seed)
@@ -187,16 +257,16 @@ function simulate_batches_all(
     Random.seed!(seed)
     T = length(batch_sizes)
     
-    all_sim_batches = Dict{Int, Dict{Int, Dict{String, Any}}}()
-    all_sim_batch_sizes = Dict{Int, Dict{Int, Int}}()
+    all_sim_batches = Vector{<:Dict{String, <:Array}}[]
     all_seeds = Random.rand(Int, T)
-    for t in 1:T
-        sim_batches, sim_batch_sizes = simulate_batches(
+    for t in 1:T-1
+        push!(all_sim_batches, simulate_batches(
             strategy, Sim, placement_reward, placement_var_reward,
-            t, T, batch_sizes, all_seeds[t],
-        )
-        all_sim_batches[t] = sim_batches
-        all_sim_batch_sizes[t] = sim_batch_sizes
+            t, T, batch_sizes,
+            ;
+            S = S,
+            seed = all_seeds[t],
+        ))
     end
-    return all_sim_batches, all_sim_batch_sizes
+    return all_sim_batches
 end
