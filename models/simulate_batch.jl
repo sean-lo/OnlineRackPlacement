@@ -9,6 +9,9 @@ function _qcdf_interpolated(
     if right_ind == 1
         return values[right_ind]
     end
+    if isnothing(right_ind)
+        error("ArgumentError: quantile = $quantile not found in quantiles = $quantiles")
+    end
     qA, vA = quantiles[right_ind - 1], values[right_ind - 1]
     qB, vB = quantiles[right_ind], values[right_ind]
     return vA + (vB - vA) * (quantile - qA) / (qB - qA)
@@ -41,26 +44,32 @@ function HistoricalDemandSimulator(
     distr_data = read_CSVs_from_dir(data_dir)
 
     sort!(distr_data["size"], [:size])
-    distr_data["size"][!, "cumFrequency"] = cumsum(distr_data["size"][!, "frequency"])
+    size_quantiles = cumsum(distr_data["size"][!, "frequency"])
+    size_quantiles = round.(size_quantiles, digits = 4)
+    size_quantiles[end] = 1.0
     size_mean = round(sum(distr_data["size"][!, "size"] .* distr_data["size"][!, "frequency"]))
 
     sort!(distr_data["power"], [:powerPerDemandItem])
-    distr_data["power"][!, "cumFrequency"] = cumsum(distr_data["power"][!, "frequency"])
+    power_quantiles = cumsum(distr_data["power"][!, "frequency"])
+    power_quantiles = round.(power_quantiles, digits = 9)
+    power_quantiles[end] = 1.0
     power_mean = round(sum(distr_data["power"][!, "powerPerDemandItem"] .* distr_data["power"][!, "frequency"]))
 
     sort!(distr_data["cooling"], [:coolingPerDemandItem])
-    distr_data["cooling"][!, "cumFrequency"] = cumsum(distr_data["cooling"][!, "frequency"])
+    cooling_quantiles = cumsum(distr_data["cooling"][!, "frequency"])
+    cooling_quantiles = round.(cooling_quantiles, digits = 6)
+    cooling_quantiles[end] = 1.0
     cooling_mean = round(sum(distr_data["cooling"][!, "coolingPerDemandItem"] .* distr_data["cooling"][!, "frequency"]))
     return HistoricalDemandSimulator(
         distr_data["size"][!, "size"],
         size_mean,
-        distr_data["size"][!, "cumFrequency"],
+        size_quantiles,
         distr_data["power"][!, "powerPerDemandItem"],
         power_mean,
-        distr_data["power"][!, "cumFrequency"],
+        power_quantiles,
         distr_data["cooling"][!, "coolingPerDemandItem"],
         cooling_mean,
-        distr_data["cooling"][!, "cumFrequency"],
+        cooling_quantiles,
     )
 end
 
@@ -71,9 +80,10 @@ function simulate_demand(
     batch_size::Int = 1,
     seed::Union{Int, Nothing} = nothing,
 )
-    if !isnothing(seed)
-        Random.seed!(seed)
+    if isnothing(seed)
+        seed = abs(Random.rand(Int))
     end
+    Random.seed!(seed)
     size_vals = [
         _qcdf(Sim.size_quantiles, Sim.size_endpoints, rand())
         for _ in 1:batch_size
