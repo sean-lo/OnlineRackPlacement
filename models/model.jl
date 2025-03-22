@@ -162,11 +162,14 @@ function build_solve_incremental_model(
     obj_minimize_power_balance::Bool = true,
     MIPGap::Float64 = 1e-4,
     time_limit_sec = 300,
+    verbose::Bool = false,
 )
     if isnothing(env)
         env = Gurobi.Env()
     end
 
+
+    verbose && println("Building model for iteration $t of $T:")
     start_time = time()
 
     model = Model(() -> Gurobi.Optimizer(env))
@@ -655,6 +658,8 @@ function build_solve_incremental_model(
     elseif strategy in ["SSOA", "MPC", "SAA"]
         @objective(model, Max, current_reward + RCoeffsD.discount_factor * future_assignment)
     end
+
+    verbose && println("Optimizing model...")
     
     optimize!(model)
     
@@ -776,6 +781,7 @@ function rack_placement(
     all_results = Dict{String, Any}[]
 
     for t in 1:T
+        verbose && println("Starting iteration $t of $T:")
 
         # Simulate
         if strategy in ["SSOA", "SAA", "MPC"]
@@ -787,9 +793,11 @@ function rack_placement(
                     t, T,
                     batch_sizes, S,
                 )
+                verbose && println("Simulated batches.")
             else
                 sim_batches = all_sim_batches[t]
                 sim_batch_sizes = all_sim_batch_sizes[t]
+                verbose && println("Retrieved batches.")
             end
         else
             sim_batches, sim_batch_sizes = nothing, nothing
@@ -819,7 +827,8 @@ function rack_placement(
             time_limit_sec = max(
                 time_limit_sec_per_iteration,
                 time_limit_sec - (time() - start_time),
-            )
+            ),
+            verbose = verbose,
         )
         merge!(x_fixed, results["x"])
         merge!(y_fixed, results["y"])

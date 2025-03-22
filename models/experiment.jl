@@ -50,10 +50,12 @@ function run_experiment(
     seed::Int = 0,
     MIPGap::Float64 = 1e-4,
     time_limit_sec_per_iteration = 300,
+    verbose::Bool = false,
 )
     if isnothing(env)
         env = Gurobi.Env()
     end
+    verbose && println("Running experiment with strategy: $strategy")
     RCoeffs = RackPlacementCoefficients(
         placement_reward = placement_reward,
         placement_var_reward = placement_var_reward,
@@ -72,6 +74,8 @@ function run_experiment(
         RCoeffs.placement_reward, RCoeffs.placement_var_reward, 
         use_batching, batch_size,
     )
+
+    verbose && println("Created batches and simulator.")
     
     if strategy == "oracle"
         result = rack_placement_oracle(batches, batch_sizes, DC, env, time_limit_sec_per_iteration)
@@ -88,6 +92,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            verbose = verbose,
         )
         r = postprocess_results(
             result["all_results"], DC, "myopic";
@@ -109,6 +114,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            verbose = verbose,
         )
         r = postprocess_results(
             result["all_results"], DC, "MPC";
@@ -119,6 +125,7 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "SSOA"
+        verbose && println("Simulating batches for SSOA...")
         all_sim_batches, all_sim_batch_sizes = simulate_batches_all(
             strategy, Sim, 
             RCoeffs.placement_reward, RCoeffs.placement_var_reward,
@@ -137,6 +144,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            verbose = verbose,
         )
         r = postprocess_results(
             result["all_results"], DC, "SSOA";
@@ -147,6 +155,7 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "SAA"
+        verbose && println("Simulating batches for SAA...")
         all_sim_batches, all_sim_batch_sizes = simulate_batches_all(
             strategy, Sim, 
             RCoeffs.placement_reward, RCoeffs.placement_var_reward,
@@ -165,6 +174,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            verbose = verbose,
         )
         r = postprocess_results(
             result["all_results"], DC, "SAA";
