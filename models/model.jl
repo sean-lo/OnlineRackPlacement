@@ -4,6 +4,7 @@ function rack_placement_oracle(
     DC::DataCenter,
     ;
     env::Union{Gurobi.Env, Nothing} = nothing,
+    with_precedence::Bool = false,
     time_limit_sec = 300,
     MIPGap::Float64 = 1e-4,
 )
@@ -20,13 +21,29 @@ function rack_placement_oracle(
 
     @variable(model, x[t in 1:T, i in 1:batch_sizes[t], j in DC.tilegroup_IDs] ≥ 0, Int)
     @variable(model, y[t in 1:T, i in 1:batch_sizes[t], r in DC.row_IDs] ≥ 0, Bin)
+    @variable(model, u[t in 1:T, i in 1:batch_sizes[t]] ≥ 0, Bin) # Helper
 
     # Assignment
     @constraint(
         model, 
-        [t in 1:T, i in 1:batch_sizes[t]], 
-        sum(y[t,i,:]) ≤ 1,
+        [t in 1:T, i in 1:batch_sizes[t]],
+        sum(y[t,i,:]) == u[t,i]
     )
+    @constraint(
+        model, 
+        [t in 1:T, i in 1:batch_sizes[t]], 
+        u[t,i] ≤ 1,
+    )
+
+    # Precedence
+    if with_precedence
+        @constraint(
+            model,
+            [t in 1:T-1, i in 1:batch_sizes[t], i_ in 1:batch_sizes[t+1]],
+            u[t,i] ≥ u[t+1,i_]
+        )
+    end
+
     # Space
     @constraint(
         model, 
@@ -73,6 +90,7 @@ function rack_placement_oracle(
         )
         ≤ DC.failpower_capacity[p]
     )
+
     @objective(
         model,
         Max,
@@ -93,9 +111,15 @@ function rack_placement_oracle(
         for (t, i, r) in keys(y.data)
             if round(JuMP.value(y[t,i,r])) > 0
     )
+    u_result = Dict(
+        (t, i) => round(JuMP.value(u[t,i]))
+        for (t, i) in keys(u.data)
+            if round(JuMP.value(u[t,i])) > 0
+    )
     return Dict(
         "x" => x_result,
         "y" => y_result,
+        "u" => u_result,
         "objective" => JuMP.objective_value(model),
         "demands_placed" => sum(values(y_result)),
         "racks_placed" => sum(values(x_result)),
@@ -158,6 +182,8 @@ function build_solve_incremental_model(
     sim_batches::Union{Vector{<:Dict{String, <:Array}}, Nothing} = nothing,
     S::Int = 1,
     env::Union{Gurobi.Env, Nothing} = nothing,
+    with_precedence::Bool = false,
+    u_fixed::Union{Dict{Tuple{Int, Int}, Int}, Nothing} = nothing,
     obj_minimize_rooms::Bool = true,
     obj_minimize_rows::Bool = true,
     obj_minimize_tilegroups::Bool = true,
@@ -181,6 +207,7 @@ function build_solve_incremental_model(
 
     @variable(model, x_now[i in 1:batch_sizes[t], j in DC.tilegroup_IDs] ≥ 0, Int)
     @variable(model, y_now[i in 1:batch_sizes[t], r in DC.row_IDs], Bin)
+    @variable(model, u_now[i in 1:batch_sizes[t]], Bin)
     if obj_minimize_rooms
         @variable(model, w_now[i in 1:batch_sizes[t], m in DC.room_IDs], Bin)
     end
@@ -200,9 +227,11 @@ function build_solve_incremental_model(
     if strategy == "SAA"
         @variable(model, x_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ-t], j in DC.tilegroup_IDs] ≥ 0, Int)
         @variable(model, y_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ-t], r in DC.row_IDs], Bin)
+        @variable(model, u_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ-t]], Bin)
     elseif strategy in ["SSOA", "MPC"]
         @variable(model, x_next[τ in t+1:T, i in 1:batch_sizes[τ-t], j in DC.tilegroup_IDs] ≥ 0, Int)
         @variable(model, y_next[τ in t+1:T, i in 1:batch_sizes[τ-t], r in DC.row_IDs], Bin)
+        @variable(model, u_next[τ in t+1:T, i in 1:batch_sizes[τ-t]], Bin)
     end
 
     # Assignment
@@ -241,6 +270,43 @@ function build_solve_incremental_model(
             sum(x_next[τ,i,j] for j in DC.row_tilegroups_map[r]) 
             == y_next[τ,i,r] * batches[t]["size"][i]
         )
+    end
+    
+    # Precedence
+    if with_precedence
+        # Comment: do not implement this constraint, 
+        # since we still want to place the batches after the first drop
+        # if t > 1
+        #     @constraint(
+        #         model,
+        #         [i in 1:batch_sizes[t-1], i_ in 1:batch_sizes[t]],
+        #         u_fixed[(t-1,i)] ≥ u_now[i_]
+        #     )
+        # end
+        if strategy == "SAA" && t < T
+            @constraint(
+                model,
+                [s in 1:S, i in 1:batch_sizes[t], i_ in 1:batch_sizes[t+1]],
+                u_now[i] ≥ u_next[t+1,s,i_]
+            )
+            @constraint(
+                model,
+                [s in 1:S, τ in t+1:T-1, i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]],
+                u_next[τ,s,i] ≥ u_next[τ+1,s,i_]
+            )
+        elseif strategy in ["SSOA", "MPC"] && t < T
+            @constraint(
+                model,
+                [i in 1:batch_sizes[t], i_ in 1:batch_sizes[t+1]],
+                u_now[i] ≥ u_next[t+1,i_]
+            )
+            @constraint(
+                model,
+                # Only implement until τ = T-1
+                [τ in t+1:T-1, i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]],
+                u_next[τ,i] ≥ u_next[τ+1,i_]
+            )
+        end
     end
 
     # Space
@@ -668,22 +734,25 @@ function build_solve_incremental_model(
     
     x_fixed_new = Dict{Tuple{Int, Int, Int}, Int}()
     y_fixed_new = Dict{Tuple{Int, Int, Int}, Int}()
+    u_fixed_new = Dict{Tuple{Int, Int}, Int}()
     for i in 1:batch_sizes[t], j in DC.tilegroup_IDs
         val = round(JuMP.value(x_now[i,j]))
-        if val == 1
+        if val > 0
             x_fixed_new[(t,i,j)] = val
         end
     end
     for i in 1:batch_sizes[t], r in DC.row_IDs
         val = round(JuMP.value(y_now[i,r]))
-        if val == 1
+        if val > 0
             y_fixed_new[(t,i,r)] = val
+            u_fixed_new[(t,i)] = val
         end
     end
 
     results = Dict(
         "x" => x_fixed_new,
         "y" => y_fixed_new,
+        "u" => u_fixed_new,
         "time_taken" => time() - start_time,
         "objective" => JuMP.objective_value(model),
         "demands_placed" => sum(values(y_fixed_new)),
@@ -752,6 +821,7 @@ function rack_placement(
     strategy::String = "SSOA",
     S::Int = 1, # Number of sample paths
     seed::Union{Int, Nothing} = nothing,
+    with_precedence::Bool = false,
     obj_minimize_rooms::Bool = true,
     obj_minimize_rows::Bool = true,
     obj_minimize_tilegroups::Bool = true,
@@ -784,6 +854,7 @@ function rack_placement(
 
     x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
     y_fixed = Dict{Tuple{Int, Int, Int}, Int}()
+    u_fixed = Dict{Tuple{Int, Int}, Int}()
     all_results = Dict{String, Any}[]
 
     for t in 1:T
@@ -824,6 +895,8 @@ function rack_placement(
             sim_batches = sim_batches,
             S = S,
             env = env,
+            with_precedence = with_precedence,
+            u_fixed = u_fixed,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -838,6 +911,7 @@ function rack_placement(
         )
         merge!(x_fixed, results["x"])
         merge!(y_fixed, results["y"])
+        merge!(u_fixed, results["u"])
         if verbose
             println("--------------------------------")
             println("Iteration $t of $T completed in $(results["time_taken"]) s.")
@@ -878,6 +952,7 @@ function rack_placement(
     return Dict(
         "x" => x_fixed,
         "y" => y_fixed,
+        "u" => u_fixed,
         "time_taken" => time() - start_time,
         "objective" => sum(
             batches[t]["reward"][i] * y_fixed[(t,i,r)]
@@ -947,6 +1022,7 @@ function postprocess_results(
     DC::DataCenter,
     strategy::String,
     ;
+    with_precedence::Bool = false,
     obj_minimize_rooms::Bool = true,
     obj_minimize_rows::Bool = true,
     obj_minimize_tilegroups::Bool = true,
@@ -1012,6 +1088,19 @@ function postprocess_results(
     result["demands_placed"] = sum(iteration_data[!, "demands_placed"])
     result["racks_placed"] = sum(iteration_data[!, "racks_placed"])
     result["objective"] = sum(iteration_data[!, "current_assignment"])
+    if with_precedence
+        first_ind_drop = T
+        for t in 1:T
+            if length(all_results[t]["y"]) < batch_sizes[t]
+                first_ind_drop = t
+                break
+            end
+        end
+        # Values until (and including)the first drop
+        result["demands_placed_precedence"] = sum(iteration_data[1:first_ind_drop, "demands_placed"])
+        result["racks_placed_precedence"] = sum(iteration_data[1:first_ind_drop, "racks_placed"])
+        result["objective_precedence"] = sum(iteration_data[1:first_ind_drop, "current_assignment"])
+    end
 
     if obj_minimize_power_surplus || obj_minimize_power_balance
         result["toppower_pair_utilization_data"] = DataFrame(Dict(

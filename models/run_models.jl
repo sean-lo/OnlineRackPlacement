@@ -25,27 +25,75 @@ include("$(@__DIR__)/read_demand.jl")
 fps = JSON.parsefile("$(@__DIR__)/../filepaths.json")
 datacenter_dir = fps["datacenter_dir"]
 distr_dir = fps["distr_dir"]
-demand_fp = fps["demand_fp"]
+demand_fps = fps["demand_fps"]
+run_ind = 5
+demand_fp = demand_fps[run_ind]
 ### 
 
 RCoeffs = RackPlacementCoefficients(
+    # placement_reward = 0.0,
+    # placement_var_reward = 20.0,
     discount_factor = 0.1,
 )
 
 DC = build_datacenter(datacenter_dir)
 Sim = HistoricalDemandSimulator(distr_dir)
-batches, batch_sizes = read_demand(demand_fp, RCoeffs)
+batches, batch_sizes = read_demand(demand_fp, RCoeffs.placement_reward, RCoeffs.placement_var_reward)
 
-oracle_result = rack_placement_oracle(batches, batch_sizes, DC)
-println(oracle_result["x"])
-println(oracle_result["y"])
-println(oracle_result["objective"])
-println(oracle_result["time_taken"])
+oracle_result = rack_placement_oracle(
+    batches, batch_sizes, DC, 
+    time_limit_sec = 300,
+)
+oracle_result["objective"]
+oracle_precedence_result = rack_placement_oracle(
+    batches, batch_sizes, DC, 
+    time_limit_sec = 30,
+    with_precedence = true,
+)
+oracle_precedence_result["objective"]
+oracle_precedence_result["u"]
+
+SSOA_precedence_result = rack_placement(
+    DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 0,
+    time_limit_sec_per_iteration = 10,
+    with_precedence = true,
+    obj_minimize_rooms = false,
+    obj_minimize_rows = true,
+    obj_minimize_tilegroups = false,
+    obj_minimize_power_surplus = true,
+    obj_minimize_power_balance = true,
+)
+SSOA_precedence_result["objective"]
+SSOA_precedence_r = postprocess_results(
+    SSOA_precedence_result["all_results"], batch_sizes, DC, "SSOA"; 
+    with_precedence = true,
+    obj_minimize_rooms = false,
+    obj_minimize_rows = true,
+    obj_minimize_tilegroups = false,
+    obj_minimize_power_surplus = true,
+    obj_minimize_power_balance = true,
+)
+SSOA_precedence_r["objective_precedence"]
 
 SSOA_result = rack_placement(
     DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 0,
-    time_limit_sec_per_iteration = 20,
+    time_limit_sec_per_iteration = 100,
+    obj_minimize_rooms = false,
+    obj_minimize_rows = true,
+    obj_minimize_tilegroups = false,
+    obj_minimize_power_surplus = true,
+    obj_minimize_power_balance = true,
 )
+SSOA_r = postprocess_results(
+    SSOA_result["all_results"], batch_sizes, DC, "SSOA"; 
+    obj_minimize_rooms = false,
+    obj_minimize_rows = true,
+    obj_minimize_tilegroups = false,
+    obj_minimize_power_surplus = true,
+    obj_minimize_power_balance = true,
+)
+SSOA_result["objective"]
+
 SAA_result = rack_placement(DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SAA", S = 5, seed = 0)
 MPC_result = rack_placement(DC, Sim, RCoeffs, batches, batch_sizes, strategy = "MPC")
 

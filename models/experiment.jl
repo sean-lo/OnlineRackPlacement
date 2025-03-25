@@ -34,6 +34,7 @@ function run_experiment(
     discount_factor::Float64 = 0.1,
     use_batching::Bool = false,
     batch_size::Int = CONST_BATCH_SIZE,
+    with_precedence::Bool = false,
     obj_minimize_rooms::Bool = true,
     obj_minimize_rows::Bool = true,
     obj_minimize_tilegroups::Bool = true,
@@ -83,6 +84,7 @@ function run_experiment(
             batches, batch_sizes, DC, 
             ;
             env = env,
+            with_precedence = with_precedence,
             time_limit_sec = time_limit_sec_per_iteration,
             MIPGap = MIPGap,
         )
@@ -93,6 +95,7 @@ function run_experiment(
             env = env,
             strategy = "myopic",
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -104,6 +107,7 @@ function run_experiment(
         )
         r = postprocess_results(
             result["all_results"], batch_sizes, DC, "myopic";
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -116,6 +120,7 @@ function run_experiment(
             env = env,
             strategy = "MPC",
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -127,6 +132,7 @@ function run_experiment(
         )
         r = postprocess_results(
             result["all_results"], batch_sizes, DC, "MPC";
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -150,6 +156,7 @@ function run_experiment(
             strategy = "SSOA", S = 1, 
             all_sim_batches = all_sim_batches,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -161,6 +168,7 @@ function run_experiment(
         )
         r = postprocess_results(
             result["all_results"], batch_sizes, DC, "SSOA";
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -184,6 +192,7 @@ function run_experiment(
             strategy = "SAA", S = S, 
             all_sim_batches = all_sim_batches,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -195,6 +204,7 @@ function run_experiment(
         )
         r = postprocess_results(
             result["all_results"], batch_sizes, DC, "SAA";
+            with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -227,9 +237,15 @@ function run_experiment(
             "optimality_gap_mean" => optimality_gap_mean,
             "demands_placed" => r["demands_placed"],
             "racks_placed" => r["racks_placed"],
-            "objective" => r["objective"],
+            "objective" => result["objective"],
             "toppower_utilization" => r["toppower_utilization"],
         )
+        if with_precedence
+            # Values until (and including) the first drop
+            returnval["demands_placed_precedence"] = r["demands_placed_precedence"]
+            returnval["racks_placed_precedence"] = r["racks_placed_precedence"]
+            returnval["objective_precedence"] = r["objective_precedence"]
+        end
     else
         returnval = Dict(
             "time_taken" => result["time_taken"],
