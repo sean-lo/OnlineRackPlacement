@@ -2,8 +2,10 @@ function rack_placement_oracle(
     batches::Vector{<:Dict{String, <:Array}},
     batch_sizes::Vector{Int},
     DC::DataCenter,
+    ;
     env::Union{Gurobi.Env, Nothing} = nothing,
     time_limit_sec = 300,
+    MIPGap::Float64 = 1e-4,
 )
     if isnothing(env)
         env = Gurobi.Env()
@@ -13,7 +15,7 @@ function rack_placement_oracle(
     T = length(batches)
 
     model = Model(() -> Gurobi.Optimizer(env))
-    set_optimizer_attribute(model, "MIPGap", 1e-4)
+    set_optimizer_attribute(model, "MIPGap", MIPGap)
     set_time_limit_sec(model, time_limit_sec)
 
     @variable(model, x[t in 1:T, i in 1:batch_sizes[t], j in DC.tilegroup_IDs] ≥ 0, Int)
@@ -95,6 +97,8 @@ function rack_placement_oracle(
         "x" => x_result,
         "y" => y_result,
         "objective" => JuMP.objective_value(model),
+        "demands_placed" => sum(values(y_result)),
+        "racks_placed" => sum(values(x_result)),
         "optimality_gap" => JuMP.relative_gap(model),
         "time_taken" => time() - start_time,
     )
@@ -666,7 +670,7 @@ function build_solve_incremental_model(
     y_fixed_new = Dict{Tuple{Int, Int, Int}, Int}()
     for i in 1:batch_sizes[t], j in DC.tilegroup_IDs
         val = round(JuMP.value(x_now[i,j]))
-        if val > 0
+        if val == 1
             x_fixed_new[(t,i,j)] = val
         end
     end
@@ -682,6 +686,8 @@ function build_solve_incremental_model(
         "y" => y_fixed_new,
         "time_taken" => time() - start_time,
         "objective" => JuMP.objective_value(model),
+        "demands_placed" => sum(values(y_fixed_new)),
+        "racks_placed" => sum(values(x_fixed_new)),
         "optimality_gap" => JuMP.relative_gap(model),
         "current_reward" => JuMP.value(current_reward),
         "current_assignment" => JuMP.value(current_assignment),
@@ -937,6 +943,7 @@ end
 
 function postprocess_results(
     all_results::Vector{Dict{String, Any}},
+    batch_sizes::Vector{Int},
     DC::DataCenter,
     strategy::String,
     ;
@@ -946,9 +953,12 @@ function postprocess_results(
     obj_minimize_power_surplus::Bool = true,
     obj_minimize_power_balance::Bool = true,
 )
+    T = length(all_results)
     keys_totake = [
         "time_taken", "optimality_gap",
         "objective",
+        "demands_placed",
+        "racks_placed",
         "current_reward", 
         "current_assignment",
     ]
@@ -972,20 +982,20 @@ function postprocess_results(
     end
 
     iteration_data = DataFrame(
-        Dict(k => [all_results[t][k] for t in 1:length(all_results)]
+        Dict(k => [all_results[t][k] for t in 1:T]
         for k in keys_totake)
     )
     room_space_utilization_data = DataFrame(Dict(
         "$m" => [
             all_results[t]["room_space_utilizations"][m]
-            for t in 1:length(all_results)
+            for t in 1:T
         ]
         for m in DC.room_IDs
     ))
     toppower_utilization_data = DataFrame(Dict(
         "$p" => [
             all_results[t]["toppower_utilizations"][p]
-            for t in 1:length(all_results)
+            for t in 1:T
         ]
         for p in DC.toppower_IDs
     ))
@@ -999,6 +1009,10 @@ function postprocess_results(
             sum(DC.power_capacity[p] for p in DC.toppower_IDs)
         ),
     )
+    result["demands_placed"] = sum(iteration_data[!, "demands_placed"])
+    result["racks_placed"] = sum(iteration_data[!, "racks_placed"])
+    result["objective"] = sum(iteration_data[!, "current_assignment"])
+
     if obj_minimize_power_surplus || obj_minimize_power_balance
         result["toppower_pair_utilization_data"] = DataFrame(Dict(
             "$(p1), $(p2)" => [

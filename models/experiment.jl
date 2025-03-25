@@ -79,7 +79,13 @@ function run_experiment(
     verbose && println("Created batches and simulator.")
     
     if strategy == "oracle"
-        result = rack_placement_oracle(batches, batch_sizes, DC, env, time_limit_sec_per_iteration)
+        result = rack_placement_oracle(
+            batches, batch_sizes, DC, 
+            ;
+            env = env,
+            time_limit_sec = time_limit_sec_per_iteration,
+            MIPGap = MIPGap,
+        )
         r = postprocess_results_oracle(DC, result, batches)
     elseif strategy == "myopic"
         result = rack_placement(
@@ -97,7 +103,7 @@ function run_experiment(
             test_run = test_run,
         )
         r = postprocess_results(
-            result["all_results"], DC, "myopic";
+            result["all_results"], batch_sizes, DC, "myopic";
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -120,7 +126,7 @@ function run_experiment(
             test_run = test_run,
         )
         r = postprocess_results(
-            result["all_results"], DC, "MPC";
+            result["all_results"], batch_sizes, DC, "MPC";
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -154,7 +160,7 @@ function run_experiment(
             test_run = test_run,
         )
         r = postprocess_results(
-            result["all_results"], DC, "SSOA";
+            result["all_results"], batch_sizes, DC, "SSOA";
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -188,7 +194,7 @@ function run_experiment(
             test_run = test_run,
         )
         r = postprocess_results(
-            result["all_results"], DC, "SAA";
+            result["all_results"], batch_sizes, DC, "SAA";
             obj_minimize_rooms = obj_minimize_rooms,
             obj_minimize_rows = obj_minimize_rows,
             obj_minimize_tilegroups = obj_minimize_tilegroups,
@@ -219,17 +225,19 @@ function run_experiment(
             "time_taken" => result["time_taken"],
             "optimality_gap_max" => optimality_gap_max,
             "optimality_gap_mean" => optimality_gap_mean,
-            "demands_placed" => Int(round((r["iteration_data"][!, "current_assignment"] |> sum) / (RCoeffs.placement_reward))),
+            "demands_placed" => r["demands_placed"],
+            "racks_placed" => r["racks_placed"],
+            "objective" => r["objective"],
             "toppower_utilization" => r["toppower_utilization"],
         )
     else
-        optimality_gap_max = 0.0
-        optimality_gap_mean = 0.0
         returnval = Dict(
             "time_taken" => result["time_taken"],
-            "optimality_gap_max" => optimality_gap_max,
-            "optimality_gap_mean" => optimality_gap_mean,
-            "demands_placed" => Int(round(result["objective"] / (RCoeffs.placement_reward))),
+            "optimality_gap_max" => result["optimality_gap"],
+            "optimality_gap_mean" => result["optimality_gap"],
+            "demands_placed" => result["demands_placed"],
+            "racks_placed" => result["racks_placed"],
+            "objective" => result["objective"],
             "toppower_utilization" => r["toppower_utilization"],
         )
     end
