@@ -35,6 +35,14 @@ function rack_placement_oracle(
         u[t,i] ≤ 1,
     )
 
+    # Linking
+    @constraint(
+        model, 
+        [t in 1:T, i in 1:batch_sizes[t], r in DC.row_IDs], 
+        sum(x[t,i,j] for j in DC.row_tilegroups_map[r]) 
+        == y[t,i,r] * batches[t]["size"][i]
+    )
+
     # Precedence
     if with_precedence
         @constraint(
@@ -46,10 +54,10 @@ function rack_placement_oracle(
 
     # Space
     @constraint(
-        model, 
-        [t in 1:T, i in 1:batch_sizes[t], r in DC.row_IDs], 
-        sum(x[t,i,j] for j in DC.row_tilegroups_map[r]) 
-        == y[t,i,r] * batches[t]["size"][i]
+        model,
+        [j in DC.tilegroup_IDs],
+        sum(x[t,i,j] for t in 1:T, i in 1:batch_sizes[t])
+        ≤ DC.tilegroup_space_capacity[j]
     )
     # Cooling
     @constraint(
