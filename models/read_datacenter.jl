@@ -84,7 +84,7 @@ struct DataCenter
     power_balanced_capacity::Dict{Int, Float64}
 end
 
-function build_datacenter(
+function read_datacenter(
     input_dir::String,
 )
 
@@ -317,7 +317,7 @@ function build_datacenter(
     )
 end
 
-DC = build_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
+DC = read_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
 
 sum(DC.power_capacity[p] for p in DC.room_toppower_map[1])
 

@@ -16,7 +16,7 @@ using Printf
 
 
 include("$(@__DIR__)/parameters.jl")
-include("$(@__DIR__)/build_datacenter.jl")
+include("$(@__DIR__)/read_datacenter.jl")
 include("$(@__DIR__)/simulate_batch.jl")
 include("$(@__DIR__)/model.jl")
 include("$(@__DIR__)/read_demand.jl")
@@ -69,7 +69,7 @@ function run_experiment(
         discount_factor = discount_factor,
     )
 
-    DC = build_datacenter(datacenter_dir)
+    DC = read_datacenter(datacenter_dir)
     Sim = HistoricalDemandSimulator(distr_dir)
     batches, batch_sizes = read_demand(
         demand_fp, 

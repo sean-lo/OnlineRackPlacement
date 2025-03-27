@@ -5,8 +5,8 @@ using CSV
 using Glob
 using DataFrames
 
-include("$(@__DIR__)/build_datacenter.jl")
+include("$(@__DIR__)/read_datacenter.jl")
 
 data_dir = "$(@__DIR__)/../data/contiguousDataCenterNew"
 
-DC = build_datacenter(data_dir)
+DC = read_datacenter(data_dir)
