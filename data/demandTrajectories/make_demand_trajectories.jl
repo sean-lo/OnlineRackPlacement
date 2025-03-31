@@ -7,12 +7,34 @@ Sim = HistoricalDemandSimulator("$(@__DIR__)/../../data/syntheticDemandSimulatio
 RCoeffs = RackPlacementCoefficients()
 
 for run_ind in 1:5
-    demand = simulate_demand(Sim, RCoeffs.placement_reward, 150, run_ind)
+    Random.seed!(run_ind)
+    seed = abs.(Random.rand(Int))
+    Random.seed!(seed)
+    seed = abs.(Random.rand(Int))
+    demand = simulate_demand(Sim, RCoeffs.placement_reward, RCoeffs.placement_var_reward, 150, seed)
     demand_df = DataFrame(
         coolingEach = demand["cooling"],
         powerEach = demand["power"],
         size = demand["size"],
         resID = 1:150,
     )
-    CSV.write("$(@__DIR__)/150res_$run_ind.csv", demand_df)
+    CSV.write("$(@__DIR__)/new_150res_$run_ind.csv", demand_df)
+end
+
+size_df = CSV.read("$(@__DIR__)/../../data/syntheticDemandSimulation/size.csv", DataFrame)
+Plots.bar(
+    size_df[!, :size],
+    size_df[!, :frequency],
+    label = "Size",
+    xlabel = "Size",
+    ylabel = "Frequency",
+    legend = :false,
+)
+for run_ind in 1:5
+    demand_df = CSV.read("$(@__DIR__)/../../data/demandTrajectories/new_150res_$run_ind.csv", DataFrame)
+    p = Plots.histogram(
+        demand_df[!, :size], bins=0:1:21, normalize = :density, alpha = 0.5, label = "(New) run $run_ind",
+        ylim = (0, 60),
+    )
+    Plots.display(p)
 end
