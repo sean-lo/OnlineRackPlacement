@@ -39,11 +39,11 @@ function run_instance(
     method = String(method)
 
     results = run_experiment(
-        datacenter_dir,
         distr_dir,
         demand_fp,
         log_dir,
         ;
+        datacenter_dir = datacenter_dir,
         write = write,
         env = GRB_ENV,
         strategy = method,

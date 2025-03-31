@@ -8,7 +8,6 @@ Data structure for immutable attributes.
 #### Main set sizes
 * `room_IDs` - room ID vector (Int)
 * `row_IDs` - row ID vector (Int)
-* `tile_IDs` - tile ID vector (Int)
 * `power_IDs` - power device ID vector (Int)
 * `cooling_IDs` - cooling zone ID vector (Int)
 * `tilegroup_IDs` - resource profile ID vector (Int)
@@ -17,8 +16,6 @@ Data structure for immutable attributes.
 #### Index sets
 * `room_rows_map` - dict of row IDs for each room. (room_ID => [row_IDs])
 * `row_room_map` - dict of room IDs for each row. (row_ID => roomID)
-* `row_tiles_map` - dict of tile IDs for each row. (row_ID => [tile_IDs])
-* `tile_row_map` - dict of row ID for each tile. (tile_ID => row_ID)
 * `tilegroup_tiles_map` - dict of tile IDs for each tile group. (resourceProfileID => [tile_IDs])
 * `tile_tilegroup_map` - dict of tile group IDs for each tile. (tile_ID => resourceProfileID)
 * `tile_position_map` - dict of position IDs for each tile. (tile_ID => posID)
@@ -39,49 +36,39 @@ Data structure for immutable attributes.
 * `tilegroup_space_capacity` - dict of tilegroup space capacities
 * `power_capacity` - dict of PD power capacities
 * `failpower_capacity` - dict PD failover power capacities when root power device fails
-* `roompower_capacity` - dict of room power capacities
-* `cooling_capacity` - dict of CZ capacities
-* `roomcooling_capacity` - dict of room cooling capacities
 * `power_balanced_capacity` - dict of balanced power capacity for each room. (room_ID => Float64)
+* `cooling_capacity` - dict of CZ capacities
 """
 struct DataCenter
-    room_IDs::Vector{Int}
-    row_IDs::Vector{Int}
-    tile_IDs::Vector{Int}
-    power_IDs::Vector{Int}
-    cooling_IDs::Vector{Int}
-    tilegroup_IDs::Vector{Int}
-    toppower_IDs::Vector{Int}
+    room_IDs::Vector{Int} #
+    row_IDs::Vector{Int} #
+    power_IDs::Vector{Int} #
+    cooling_IDs::Vector{Int} #
+    tilegroup_IDs::Vector{Int} #
+    toppower_IDs::Vector{Int} #
     # topology
-    room_rows_map::Dict{Int, Vector{Int}}
-    row_room_map::Dict{Int, Int}
-    row_tiles_map::Dict{Int, Vector{Int}}
-    tile_row_map::Dict{Int, Int}
-    tilegroup_tiles_map::Dict{Int, Vector{Int}}
-    tile_tilegroup_map::Dict{Int, Int}
-    tile_position_map::Dict{Int, Int}
-    row_tilegroups_map::Dict{Int, Vector{Int}}
+    room_rows_map::Dict{Int, Vector{Int}} #
+    row_room_map::Dict{Int, Int} #
+    row_tilegroups_map::Dict{Int, Vector{Int}} # 
     tilegroup_row_map::Dict{Int, Int}
-    cooling_tiles_map::Dict{Int, Vector{Int}}
-    cooling_tilegroups_map::Dict{Int, Vector{Int}}
+    cooling_tilegroups_map::Dict{Int, Vector{Int}} #
+    tilegroup_cooling_map::Dict{Int, Int}
     power_parent_map::Dict{Int, Int}
     power_children_map::Dict{Int, Vector{Int}}
-    power_tilegroups_map::Dict{Int, Vector{Int}}
-    power_descendants_map::Dict{Int, Vector{Int}}
-    room_tilegroups_map::Dict{Int, Vector{Int}}
-    room_toppower_map::Dict{Int, Vector{Int}}
+    power_tilegroups_map::Dict{Int, Vector{Int}} #
+    power_descendants_map::Dict{Int, Vector{Int}} #
+    room_tilegroups_map::Dict{Int, Vector{Int}} #
+    room_toppower_map::Dict{Int, Vector{Int}} #
     toppower_room_map::Dict{Int, Int}
     room_power_map::Dict{Int, Vector{Int}}
     power_room_map::Dict{Int, Int}
 
     # capacities - no active demands
-    tilegroup_space_capacity::Dict{Int, Float64}
-    power_capacity::Dict{Int, Float64}
-    failpower_capacity::Dict{Int, Float64}
-    roompower_capacity::Dict{Int, Float64}
-    cooling_capacity::Dict{Int, Float64}
-    roomcooling_capacity::Dict{Int, Float64}
-    power_balanced_capacity::Dict{Int, Float64}
+    tilegroup_space_capacity::Dict{Int, Float64} # 
+    power_capacity::Dict{Int, Float64} #
+    failpower_capacity::Dict{Int, Float64} # 
+    power_balanced_capacity::Dict{Int, Float64} #
+    cooling_capacity::Dict{Int, Float64} #
 end
 
 function read_datacenter(
@@ -100,6 +87,20 @@ function read_datacenter(
     end
     data = Dict(key => data[key] for key in used_keys)
 
+    for (df_name, fields) in [
+        ("powerHierarchy", ["parentPowerDeviceID", "powerDeviceID"]),
+        ("czTiles", ["coolingZoneID", "tileID"]),
+        ("resourceProfiles", ["resourceProfileID", "tileID"]),
+        ("tiles", ["roomID", "rowID"]),
+        ("objectCapacities", ["objectType", "objectID", "capacity"]),
+    ]
+        for field in fields
+            if !(field in names(data[df_name]))
+                error("Missing required field: $field in $df_name")
+            end
+        end
+    end
+
     power_IDs = setdiff(
         unique(vcat(
             data["powerHierarchy"][:, :parentPowerDeviceID], 
@@ -110,7 +111,6 @@ function read_datacenter(
     cooling_IDs = unique(data["czTiles"][:, :coolingZoneID]) |> sort
     tilegroup_IDs = unique(data["resourceProfiles"][:, :resourceProfileID]) |> sort
     room_IDs = unique(data["tiles"][:, :roomID]) |> sort
-    tile_IDs = unique(data["tiles"][:, :tileID]) |> sort
     row_IDs = unique(data["tiles"][:, :rowID]) |> sort
     toppower_IDs = unique(data["powerHierarchy"][data["powerHierarchy"][!, :parentPowerDeviceID] .== 0, :powerDeviceID]) |> sort
 
@@ -142,9 +142,6 @@ function read_datacenter(
         )
     )
     tile_tilegroup_map = Dict(data["resourceProfiles"][!, :tileID] .=> data["resourceProfiles"][!, :resourceProfileID])
-    tile_position_map = Dict(
-        data["tiles"][!, :tileID] .=> data["tiles"][!, :position]
-    )
     row_tilegroups_map = Dict(
         x => unique([
             tile_tilegroup_map[y]
@@ -176,6 +173,11 @@ function read_datacenter(
             for y in cooling_tiles_map[x]
         ])
         for x in cooling_IDs
+    )
+    tilegroup_cooling_map = Dict(
+        j => c
+        for c in cooling_IDs 
+            for j in cooling_tilegroups_map[c]
     )
 
     power_parent_map = Dict(data["powerHierarchy"][!, :powerDeviceID] .=> data["powerHierarchy"][!, :parentPowerDeviceID])
@@ -268,12 +270,12 @@ function read_datacenter(
             x[!, :objectID] .=> x[!, :capacity]
         )
     )
-    roompower_capacity = (
-        data["objectCapacities"]
-        |> x -> filter(r -> r[:objectType] == "pdRoom", x)
-        |> x -> Dict(
-            x[!, :objectID] .=> x[!, :capacity]
+    power_balanced_capacity = Dict(
+        m => (
+            (sum(power_capacity[p] for p in room_toppower_map[m]) * 2) 
+            / (length(room_toppower_map[m]) * (length(room_toppower_map[m]) - 1))
         )
+        for m in room_IDs
     )
 
     cooling_capacity = (
@@ -283,42 +285,18 @@ function read_datacenter(
             x[!, :objectID] .=> x[!, :capacity]
         )
     )
-    roomcooling_capacity = (
-        data["objectCapacities"]
-        |> x -> filter(r -> r[:objectType] == "czRoom", x)
-        |> x -> Dict(
-            x[!, :objectID] .=> x[!, :capacity]
-        )
-    )
-    power_balanced_capacity = Dict(
-        m => (
-            (sum(power_capacity[p] for p in room_toppower_map[m]) * 2) 
-            / (length(room_toppower_map[m]) * (length(room_toppower_map[m]) - 1))
-        )
-        for m in room_IDs
-    )
 
     return DataCenter(
-        room_IDs, row_IDs, tile_IDs, power_IDs, cooling_IDs, tilegroup_IDs, toppower_IDs,
+        room_IDs, row_IDs, power_IDs, cooling_IDs, tilegroup_IDs, toppower_IDs,
         room_rows_map, row_room_map, 
-        row_tiles_map, tile_row_map, 
-        tilegroup_tiles_map, tile_tilegroup_map,
-        tile_position_map,
         row_tilegroups_map, tilegroup_row_map,
-        cooling_tiles_map, cooling_tilegroups_map,
-        power_parent_map, power_children_map, power_tilegroups_map,power_descendants_map,
+        cooling_tilegroups_map, tilegroup_cooling_map,
+        power_parent_map, power_children_map,
+        power_tilegroups_map, power_descendants_map, 
         room_tilegroups_map,
-        room_toppower_map, toppower_room_map,
-        room_power_map, power_room_map,
-        tilegroup_space_capacity,
-        power_capacity, failpower_capacity, roompower_capacity,
-        cooling_capacity, roomcooling_capacity,
-        power_balanced_capacity,
+        room_toppower_map, toppower_room_map, room_power_map, power_room_map,
+        tilegroup_space_capacity, 
+        power_capacity, failpower_capacity, power_balanced_capacity,
+        cooling_capacity, 
     )
 end
-
-DC = read_datacenter("$(@__DIR__)/../data/contiguousDataCenterNew")
-
-sum(DC.power_capacity[p] for p in DC.room_toppower_map[1])
-
-DC.tilegroup_tiles_map
