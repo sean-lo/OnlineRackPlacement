@@ -69,10 +69,15 @@ struct HistoricalDemandSimulator
     cooling_endpoints::Vector{Float64}
     cooling_mean::Float64
     cooling_quantiles::Vector{Float64}
+    interpolate_power::Bool
+    interpolate_cooling::Bool
 end
 
 function HistoricalDemandSimulator(
     data_dir::String,
+    ;
+    interpolate_power::Bool = true,
+    interpolate_cooling::Bool = true,
 )
     distr_data = read_CSVs_from_dir(data_dir)
 
@@ -103,6 +108,8 @@ function HistoricalDemandSimulator(
         distr_data["cooling"][!, "coolingPerDemandItem"],
         cooling_mean,
         cooling_quantiles,
+        interpolate_power,
+        interpolate_cooling,
     )
 end
 
@@ -122,11 +129,19 @@ function simulate_demand(
         for _ in 1:batch_size
     ]
     power_vals = [
-        _qcdf_interpolated(rand(), Sim.power_quantiles, Sim.power_endpoints)
+        (
+            Sim.interpolate_power 
+            ? _qcdf_interpolated(rand(), Sim.power_quantiles, Sim.power_endpoints)
+            : _qcdf(rand(), Sim.power_quantiles, Sim.power_endpoints)
+        )
         for _ in 1:batch_size
     ]
     cooling_vals = [
-        _qcdf_interpolated(rand(), Sim.cooling_quantiles, Sim.cooling_endpoints)
+        (
+            Sim.interpolate_cooling 
+            ? _qcdf_interpolated(rand(), Sim.cooling_quantiles, Sim.cooling_endpoints)
+            : _qcdf(rand(), Sim.cooling_quantiles, Sim.cooling_endpoints)
+        )
         for _ in 1:batch_size
     ]
     return Dict(
@@ -166,8 +181,16 @@ function simulate_demands(
     end
     Random.seed!(seed)
     size_vals = _qcdf(rand(Float64, shape), Sim.size_quantiles, Sim.size_endpoints)
-    power_vals = _qcdf_interpolated(rand(Float64, shape), Sim.power_quantiles, Sim.power_endpoints)
-    cooling_vals = _qcdf_interpolated(rand(Float64, shape), Sim.cooling_quantiles, Sim.cooling_endpoints)
+    if Sim.interpolate_power
+        power_vals = _qcdf_interpolated(rand(Float64, shape), Sim.power_quantiles, Sim.power_endpoints)
+    else
+        power_vals = _qcdf(rand(Float64, shape), Sim.power_quantiles, Sim.power_endpoints)
+    end
+    if Sim.interpolate_cooling
+        cooling_vals = _qcdf_interpolated(rand(Float64, shape), Sim.cooling_quantiles, Sim.cooling_endpoints)
+    else
+        cooling_vals = _qcdf(rand(Float64, shape), Sim.cooling_quantiles, Sim.cooling_endpoints)
+    end
     return convert(Dict{String, <:Array}, Dict(
         "size" => size_vals,
         "power" => power_vals,
