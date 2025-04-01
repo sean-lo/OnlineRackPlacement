@@ -3,7 +3,11 @@ Pkg.activate("$(@__DIR__)/../..")
 
 include("$(@__DIR__)/../../models/simulate_batch.jl")
 
-Sim = HistoricalDemandSimulator("$(@__DIR__)/../../data/syntheticDemandSimulation/")
+Sim = HistoricalDemandSimulator(
+    "$(@__DIR__)/../../data/syntheticDemandSimulation/",
+    interpolate_power = false,
+    interpolate_cooling = false,
+)
 RCoeffs = RackPlacementCoefficients()
 
 for run_ind in 1:5
@@ -38,3 +42,12 @@ for run_ind in 1:5
     )
     Plots.display(p)
 end
+
+power_df = CSV.read("$(@__DIR__)/../../data/syntheticDemandSimulation/power.csv", DataFrame)
+Plots.bar(
+    power_df[!, :powerPerDemandItem],
+    power_df[!, :frequency],
+    label = "Power",
+    xlabel = "Power",
+    ylabel = "Frequency",
+)

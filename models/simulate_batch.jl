@@ -98,6 +98,22 @@ function HistoricalDemandSimulator(
     cooling_quantiles = round.(cooling_quantiles, digits = 6)
     cooling_quantiles[end] = 1.0
     cooling_mean = round(sum(distr_data["cooling"][!, "coolingPerDemandItem"] .* distr_data["cooling"][!, "frequency"]))
+
+    power_disc = Int(round(minimum(distr_data["power"][2:end, :powerPerDemandItem] - distr_data["power"][1:end-1, :powerPerDemandItem])))
+    cooling_disc = Int(round(minimum(distr_data["cooling"][2:end, :coolingPerDemandItem] - distr_data["cooling"][1:end-1, :coolingPerDemandItem])))
+    if !interpolate_power
+        if power_disc == 0
+            error()
+        end
+        power_mean = round(power_mean / power_disc) * power_disc
+    end
+    if !interpolate_cooling
+        if cooling_disc == 0
+            error()
+        end
+        cooling_mean = round(cooling_mean / cooling_disc) * cooling_disc
+    end
+
     return HistoricalDemandSimulator(
         distr_data["size"][!, "size"],
         size_mean,

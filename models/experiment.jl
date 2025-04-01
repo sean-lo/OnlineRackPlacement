@@ -41,6 +41,8 @@ function run_experiment(
     obj_minimize_tilegroups::Bool = true,
     obj_minimize_power_surplus::Bool = true,
     obj_minimize_power_balance::Bool = true,
+    interpolate_power::Bool = true,
+    interpolate_cooling::Bool = true,
     placement_reward::Float64 = 200.0,
     placement_var_reward::Float64 = 0.0,
     room_mult::Float64 = 1.0,
@@ -75,7 +77,11 @@ function run_experiment(
     else
         DC = read_datacenter(datacenter_dir)
     end
-    Sim = HistoricalDemandSimulator(distr_dir)
+    Sim = HistoricalDemandSimulator(
+        distr_dir,
+        interpolate_power = interpolate_power,
+        interpolate_cooling = interpolate_cooling,
+    )
     batches, batch_sizes = read_demand(
         demand_fp, 
         RCoeffs.placement_reward, RCoeffs.placement_var_reward, 
@@ -120,10 +126,20 @@ function run_experiment(
             obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "MPC"
+        all_sim_batches = simulate_batches_all(
+            strategy, Sim, 
+            RCoeffs.placement_reward, RCoeffs.placement_var_reward,
+            batch_sizes, 
+            ;
+            S = 1,
+            seed = seed,
+            test_run = test_run,
+        )
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
             env = env,
             strategy = "MPC",
+            all_sim_batches = all_sim_batches,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
