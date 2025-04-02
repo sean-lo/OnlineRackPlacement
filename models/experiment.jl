@@ -236,6 +236,15 @@ function run_experiment(
 
     if write && !test_run
         mkpath(result_dir)
+        open("$(result_dir)/x.json", "w") do f
+            JSON.print(f, result["x"], 4)
+        end
+        open("$(result_dir)/y.json", "w") do f
+            JSON.print(f, result["y"], 4)
+        end
+        open("$(result_dir)/u.json", "w") do f
+            JSON.print(f, result["u"], 4)
+        end
         if strategy != "oracle"
             CSV.write("$(result_dir)/iteration_data.csv", r["iteration_data"])
             CSV.write("$(result_dir)/room_space_utilization.csv", r["room_space_utilization_data"])
