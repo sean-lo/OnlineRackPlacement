@@ -248,7 +248,8 @@ function build_datacenter(
     )
 
     return DataCenter(
-        room_IDs, row_IDs, power_IDs, cooling_IDs, tilegroup_IDs, toppower_IDs,
+        room_IDs, row_IDs, power_IDs, cooling_IDs, tilegroup_IDs, 
+        toppower_IDs, midpower_IDs, lowpower_IDs,
         room_rows_map, row_room_map, 
         row_tilegroups_map, tilegroup_row_map,
         cooling_tilegroups_map, tilegroup_cooling_map,

@@ -12,6 +12,8 @@ Data structure for immutable attributes.
 * `cooling_IDs` - cooling zone ID vector (Int)
 * `tilegroup_IDs` - resource profile ID vector (Int)
 * `toppower_IDs` - top power device ID vector (Int)
+* `midpower_IDs` - mid power device ID vector (Int)
+* `lowpower_IDs` - low power device ID vector (Int)
 
 #### Index sets
 * `room_rows_map` - dict of row IDs for each room. (room_ID => [row_IDs])
@@ -46,6 +48,8 @@ struct DataCenter
     cooling_IDs::Vector{Int} #
     tilegroup_IDs::Vector{Int} #
     toppower_IDs::Vector{Int} #
+    midpower_IDs::Vector{Int} #
+    lowpower_IDs::Vector{Int} #
     # topology
     room_rows_map::Dict{Int, Vector{Int}} #
     row_room_map::Dict{Int, Int} #
@@ -113,6 +117,18 @@ function read_datacenter(
     room_IDs = unique(data["tiles"][:, :roomID]) |> sort
     row_IDs = unique(data["tiles"][:, :rowID]) |> sort
     toppower_IDs = unique(data["powerHierarchy"][data["powerHierarchy"][!, :parentPowerDeviceID] .== 0, :powerDeviceID]) |> sort
+    midpower_IDs = (
+        data["powerHierarchy"]
+        |> x -> filter(r -> r[:parentPowerDeviceID] in toppower_IDs, x)
+        |> x -> unique(x[!, :powerDeviceID])
+        |> sort
+    )
+    lowpower_IDs = (
+        data["powerHierarchy"]
+        |> x -> filter(r -> r[:parentPowerDeviceID] in midpower_IDs, x)
+        |> x -> unique(x[!, :powerDeviceID])
+        |> sort
+    )
 
     # Mappings
     room_rows_map = (
@@ -287,7 +303,8 @@ function read_datacenter(
     )
 
     return DataCenter(
-        room_IDs, row_IDs, power_IDs, cooling_IDs, tilegroup_IDs, toppower_IDs,
+        room_IDs, row_IDs, power_IDs, cooling_IDs, tilegroup_IDs, 
+        toppower_IDs, midpower_IDs, lowpower_IDs,
         room_rows_map, row_room_map, 
         row_tilegroups_map, tilegroup_row_map,
         cooling_tilegroups_map, tilegroup_cooling_map,
