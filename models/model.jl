@@ -72,7 +72,7 @@ function rack_placement_oracle(
     # Power
     @constraint(
         model, 
-        [p in DC.power_IDs],
+        power[p in DC.power_IDs],
         sum(
             (batches[t]["power"][i] / 2) * x[t,i,j]
             for t in 1:T, i in 1:batch_sizes[t], j in DC.power_tilegroups_map[p]
@@ -82,7 +82,11 @@ function rack_placement_oracle(
     # Failover power
     @constraint(
         model, 
-        [p_ in DC.toppower_IDs, p in setdiff(DC.power_IDs, DC.power_descendants_map[p_])],
+        failpower[
+            m in DC.room_IDs,
+            p_ in DC.room_toppower_map[m], 
+            p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
+        ],
         sum(
             (batches[t]["power"][i] / 2) * (
                 sum(
@@ -133,6 +137,16 @@ function rack_placement_oracle(
         "racks_placed" => sum(values(x_result)),
         "optimality_gap" => JuMP.relative_gap(model),
         "time_taken" => time() - start_time,
+        "power" => Dict(
+            p => JuMP.value(power[p]) 
+            for p in DC.power_IDs
+        ),
+        "failpower" => Dict(
+            (m, p_, p) => JuMP.value(failpower[m,p_,p]) 
+            for m in DC.room_IDs
+                for p_ in DC.room_toppower_map[m]
+                    for p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
+        ),
     )
 end
 
@@ -490,7 +504,11 @@ function build_solve_incremental_model(
     # Failover power
     @expression(
         model,
-        failpower_now[p_ in DC.toppower_IDs, p in setdiff(DC.power_IDs, DC.power_descendants_map[p_])],
+        failpower_now[
+            m in DC.room_IDs,
+            p_ in DC.room_toppower_map[m], 
+            p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
+        ],
         sum(
             (batches[τ]["power"][i] / 2) * (
                 sum(
@@ -523,7 +541,12 @@ function build_solve_incremental_model(
     if strategy == "SAA"
         @expression(
             model,
-            failpower_next[p_ in DC.toppower_IDs, p in setdiff(DC.power_IDs, DC.power_descendants_map[p_]), s in 1:S],
+            failpower_next[
+                m in DC.room_IDs,
+                p_ in DC.room_toppower_map[m], 
+                p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_]), 
+                s in 1:S
+            ],
             sum(
                 (sim_batches[τ-t]["power"][s,i] / 2) * (
                     sum(
@@ -540,13 +563,22 @@ function build_solve_incremental_model(
         )
         @constraint(
             model,
-            [p_ in DC.toppower_IDs, p in setdiff(DC.power_IDs, DC.power_descendants_map[p_]), s in 1:S],
-            failpower_now[p_,p] + failpower_next[p_,p,s] ≤ DC.failpower_capacity[p]
+            [
+                m in DC.room_IDs,
+                p_ in DC.room_toppower_map[m], 
+                p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_]), 
+                s in 1:S
+            ],
+            failpower_now[m,p_,p] + failpower_next[m,p_,p,s] ≤ DC.failpower_capacity[p]
         )
     elseif strategy in ["SSOA", "MPC"]
         @expression(
             model,
-            failpower_next[p_ in DC.toppower_IDs, p in setdiff(DC.power_IDs, DC.power_descendants_map[p_])],
+            failpower_next[
+                m in DC.room_IDs,
+                p_ in DC.room_toppower_map[m], 
+                p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
+            ],
             sum(
                 (sim_batches[τ-t]["power"][i] / 2) * (
                     sum(
@@ -563,14 +595,22 @@ function build_solve_incremental_model(
         )
         @constraint(
             model,
-            [p_ in DC.toppower_IDs, p in setdiff(DC.power_IDs, DC.power_descendants_map[p_])],
-            failpower_now[p_,p] + failpower_next[p_,p] ≤ DC.failpower_capacity[p]
+            [
+                m in DC.room_IDs,
+                p_ in DC.room_toppower_map[m], 
+                p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
+            ],
+            failpower_now[m,p_,p] + failpower_next[m,p_,p] ≤ DC.failpower_capacity[p]
         )
     else
         @constraint(
             model,
-            [p_ in DC.toppower_IDs, p in setdiff(DC.power_IDs, DC.power_descendants_map[p_])],
-            failpower_now[p_,p] ≤ DC.failpower_capacity[p]
+            [
+                m in DC.room_IDs,
+                p_ in DC.room_toppower_map[m], 
+                p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
+            ],
+            failpower_now[m,p_,p] ≤ DC.failpower_capacity[p]
         )
     end
 
@@ -801,9 +841,10 @@ function build_solve_incremental_model(
             for p in DC.power_IDs
         ),
         "failpower" => Dict(
-            (p_, p) => JuMP.value(failpower_now[p_,p]) 
-            for p_ in DC.toppower_IDs
-                for p in setdiff(DC.power_IDs, DC.power_descendants_map[p_])
+            (m, p_, p) => JuMP.value(failpower_now[m,p_,p]) 
+            for m in DC.room_IDs
+                for p_ in DC.room_toppower_map[m]
+                    for p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
         ),
     )
     if strategy in ["SSOA", "SAA", "MPC"]

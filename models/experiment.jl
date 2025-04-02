@@ -260,6 +260,8 @@ function run_experiment(
             "racks_placed" => r["racks_placed"],
             "objective" => result["objective"],
             "toppower_utilization" => r["toppower_utilization"],
+            "power_utilization" => result["all_results"][end]["power"],
+            "failpower_utilization" => result["all_results"][end]["failpower"],
         )
         if with_precedence
             # Values until (and including) the first drop
@@ -276,6 +278,8 @@ function run_experiment(
             "racks_placed" => result["racks_placed"],
             "objective" => result["objective"],
             "toppower_utilization" => r["toppower_utilization"],
+            "power_utilization" => result["power"],
+            "failpower_utilization" => result["failpower"],
         )
     end
 
