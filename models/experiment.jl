@@ -29,33 +29,34 @@ function run_experiment(
     result_dir::String,
     ;
     datacenter_dir::Union{String, Nothing} = nothing,
-    write::Bool = true,
     env::Union{Gurobi.Env, Nothing} = nothing,
-    strategy::String = "SSOA",
-    discount_factor::Float64 = 0.1,
     use_batching::Bool = false,
     batch_size::Int = CONST_BATCH_SIZE,
+    interpolate_power::Bool = true,
+    interpolate_cooling::Bool = true,
     with_precedence::Bool = false,
+    placement_reward::Float64 = 200.0,
+    placement_var_reward::Float64 = 0.0,
+    strategy::String = "SSOA",
     obj_minimize_rooms::Bool = true,
     obj_minimize_rows::Bool = true,
     obj_minimize_tilegroups::Bool = true,
     obj_minimize_power_surplus::Bool = true,
     obj_minimize_power_balance::Bool = true,
-    interpolate_power::Bool = true,
-    interpolate_cooling::Bool = true,
-    placement_reward::Float64 = 200.0,
-    placement_var_reward::Float64 = 0.0,
     room_mult::Float64 = 1.0,
     row_mult::Float64 = 1.0,
     tilegroup_penalty::Float64 = 1.0,
     power_surplus_penalty::Float64 = 1e-3,
     power_balance_penalty::Float64 = 1e-5,
+    discount_factor::Float64 = 0.1,
     S::Int = 1,
     seed::Int = 0,
-    MIPGap::Float64 = 1e-4,
     time_limit_sec_per_iteration = 300,
+    MIPGap::Float64 = 1e-4,
     test_run::Bool = false,
     verbose::Bool = false,
+    write::Bool = true,
+    build_datacenter_kwargs...,
 )
     if isnothing(env)
         env = Gurobi.Env()
@@ -73,7 +74,10 @@ function run_experiment(
     )
     
     if isnothing(datacenter_dir) 
-        DC = build_datacenter()
+        DC = build_datacenter(
+            ;
+            build_datacenter_kwargs...,
+        )
     else
         DC = read_datacenter(datacenter_dir)
     end
