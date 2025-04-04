@@ -103,7 +103,6 @@ function run_experiment(
             time_limit_sec = time_limit_sec_per_iteration,
             MIPGap = MIPGap,
         )
-        r = postprocess_results_oracle(DC, result, batches)
     elseif strategy == "myopic"
         result = rack_placement(
             DC, Sim, RCoeffs, batches, batch_sizes, 
@@ -119,15 +118,6 @@ function run_experiment(
             MIPGap = MIPGap,
             verbose = verbose,
             test_run = test_run,
-        )
-        r = postprocess_results(
-            result["all_results"], batch_sizes, DC, "myopic";
-            with_precedence = with_precedence,
-            obj_minimize_rooms = obj_minimize_rooms,
-            obj_minimize_rows = obj_minimize_rows,
-            obj_minimize_tilegroups = obj_minimize_tilegroups,
-            obj_minimize_power_surplus = obj_minimize_power_surplus,
-            obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "MPC"
         all_sim_batches = simulate_batches_all(
@@ -154,15 +144,6 @@ function run_experiment(
             MIPGap = MIPGap,
             verbose = verbose,
             test_run = test_run,
-        )
-        r = postprocess_results(
-            result["all_results"], batch_sizes, DC, "MPC";
-            with_precedence = with_precedence,
-            obj_minimize_rooms = obj_minimize_rooms,
-            obj_minimize_rows = obj_minimize_rows,
-            obj_minimize_tilegroups = obj_minimize_tilegroups,
-            obj_minimize_power_surplus = obj_minimize_power_surplus,
-            obj_minimize_power_balance = obj_minimize_power_balance,
         )
     elseif strategy == "SSOA"
         verbose && println("Simulating batches for SSOA...")
@@ -191,15 +172,6 @@ function run_experiment(
             verbose = verbose,
             test_run = test_run,
         )
-        r = postprocess_results(
-            result["all_results"], batch_sizes, DC, "SSOA";
-            with_precedence = with_precedence,
-            obj_minimize_rooms = obj_minimize_rooms,
-            obj_minimize_rows = obj_minimize_rows,
-            obj_minimize_tilegroups = obj_minimize_tilegroups,
-            obj_minimize_power_surplus = obj_minimize_power_surplus,
-            obj_minimize_power_balance = obj_minimize_power_balance,
-        )
     elseif strategy == "SAA"
         verbose && println("Simulating batches for SAA...")
         all_sim_batches = simulate_batches_all(
@@ -227,15 +199,6 @@ function run_experiment(
             verbose = verbose,
             test_run = test_run,
         )
-        r = postprocess_results(
-            result["all_results"], batch_sizes, DC, "SAA";
-            with_precedence = with_precedence,
-            obj_minimize_rooms = obj_minimize_rooms,
-            obj_minimize_rows = obj_minimize_rows,
-            obj_minimize_tilegroups = obj_minimize_tilegroups,
-            obj_minimize_power_surplus = obj_minimize_power_surplus,
-            obj_minimize_power_balance = obj_minimize_power_balance,
-        )
     end
 
     if write && !test_run
@@ -250,51 +213,17 @@ function run_experiment(
             JSON.print(f, result["u"], 4)
         end
         if strategy != "oracle"
-            CSV.write("$(result_dir)/iteration_data.csv", r["iteration_data"])
-            CSV.write("$(result_dir)/room_space_utilization.csv", r["room_space_utilization_data"])
-            CSV.write("$(result_dir)/toppower_utilization.csv", r["toppower_utilization_data"])
+            CSV.write("$(result_dir)/iteration_data.csv", result["iteration_data"])
+            CSV.write("$(result_dir)/row_space_utilization.csv", result["row_space_utilization_data"])
+            CSV.write("$(result_dir)/room_space_utilization.csv", result["room_space_utilization_data"])
+            CSV.write("$(result_dir)/toppower_utilization.csv", result["toppower_utilization_data"])
             if obj_minimize_power_surplus || obj_minimize_power_balance
-                CSV.write("$(result_dir)/toppower_pair_utilization.csv", r["toppower_pair_utilization_data"])
+                CSV.write("$(result_dir)/toppower_pair_utilization.csv", result["toppower_pair_utilization_data"])
             end
         else
             CSV.write("$(result_dir)/objective.csv", DataFrame(Dict("objective" => [result["objective"]])))
         end
     end
 
-    if strategy != "oracle"
-        optimality_gap_vals = r["iteration_data"][!, "optimality_gap"]
-        optimality_gap_max = maximum(optimality_gap_vals)
-        optimality_gap_mean = StatsBase.geomean(optimality_gap_vals .+ 1.0) - 1.0
-        returnval = Dict(
-            "time_taken" => result["time_taken"],
-            "optimality_gap_max" => optimality_gap_max,
-            "optimality_gap_mean" => optimality_gap_mean,
-            "demands_placed" => r["demands_placed"],
-            "racks_placed" => r["racks_placed"],
-            "objective" => result["objective"],
-            "toppower_utilization" => r["toppower_utilization"],
-            "power_utilization" => result["all_results"][end]["power"],
-            "failpower_utilization" => result["all_results"][end]["failpower"],
-        )
-        if with_precedence
-            # Values until (and including) the first drop
-            returnval["demands_placed_precedence"] = r["demands_placed_precedence"]
-            returnval["racks_placed_precedence"] = r["racks_placed_precedence"]
-            returnval["objective_precedence"] = r["objective_precedence"]
-        end
-    else
-        returnval = Dict(
-            "time_taken" => result["time_taken"],
-            "optimality_gap_max" => result["optimality_gap"],
-            "optimality_gap_mean" => result["optimality_gap"],
-            "demands_placed" => result["demands_placed"],
-            "racks_placed" => result["racks_placed"],
-            "objective" => result["objective"],
-            "toppower_utilization" => r["toppower_utilization"],
-            "power_utilization" => result["power"],
-            "failpower_utilization" => result["failpower"],
-        )
-    end
-
-    return returnval
+    return result
 end

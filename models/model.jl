@@ -128,41 +128,64 @@ function rack_placement_oracle(
         for (t, i) in keys(u.data)
             if round(JuMP.value(u[t,i])) > 0
     )
+
+    r = postprocess_results_oracle(
+        DC,
+        x_result,
+        batches,
+    )
+
+    optimality_gap = JuMP.relative_gap(model)
     return Dict(
         "x" => x_result,
         "y" => y_result,
         "u" => u_result,
-        "objective" => JuMP.objective_value(model),
+        "time_taken" => time() - start_time,
+        "optimality_gap_max" => optimality_gap,
+        "optimality_gap_mean" => optimality_gap,
         "demands_placed" => sum(values(y_result)),
         "racks_placed" => sum(values(x_result)),
-        "optimality_gap" => JuMP.relative_gap(model),
-        "time_taken" => time() - start_time,
-        "power" => Dict(
+        "objective" => JuMP.objective_value(model),
+        "toppower_utilization" => r["toppower_utilization"],
+        "power_utilization" => Dict(
             p => JuMP.value(power[p]) 
             for p in DC.power_IDs
         ),
-        "failpower" => Dict(
+        "failpower_utilization" => Dict(
             (m, p_, p) => JuMP.value(failpower[m,p_,p]) 
             for m in DC.room_IDs
                 for p_ in DC.room_toppower_map[m]
                     for p in setdiff(DC.room_power_map[m], DC.power_descendants_map[p_])
         ),
+        "row_space_utilization_data" => r["row_space_utilization_data"],
+        "room_space_utilization_data" => r["room_space_utilization_data"],
+        "toppower_utilization_data" => r["toppower_utilization_data"],
     )
 end
 
 
 function postprocess_results_oracle(
     DC::DataCenter,
-    results::Dict{String, Any},
+    x_result::Dict{Tuple{Int, Int, Int}, Int},
     batches::Vector{<:Dict{String, <:Array}},
     ;
 )
-    T = length(batches)
+    row_space_utilization_data = DataFrame(Dict(
+        "$r" => [
+            sum(
+                [x_result[(t,i,j)]
+                for (t,i,j) in keys(x_result)
+                    if j in DC.row_tilegroups_map[r]],
+                init=0.0,
+            )
+        ]
+        for r in DC.row_IDs
+    ))
     room_space_utilization_data = DataFrame(Dict(
         "$m" => [
             sum(
-                results["x"][(t,i,j)]
-                for (t,i,j) in keys(results["x"])
+                x_result[(t,i,j)]
+                for (t,i,j) in keys(x_result)
                     if j in DC.room_tilegroups_map[m]
             )
         ]
@@ -171,14 +194,16 @@ function postprocess_results_oracle(
     toppower_utilization_data = DataFrame(Dict(
         "$p" => [
             sum(
-                (batches[t]["power"][i] / 2) * results["x"][(t,i,j)]
-                for (t,i,j) in keys(results["x"])
+                (batches[t]["power"][i] / 2) * x_result[(t,i,j)]
+                for (t,i,j) in keys(x_result)
                     if j in DC.power_tilegroups_map[p]
             )
         ] 
         for p in DC.toppower_IDs
     ))
+
     return Dict(
+        "row_space_utilization_data" => row_space_utilization_data,
         "room_space_utilization_data" => room_space_utilization_data,
         "toppower_utilization_data" => toppower_utilization_data,
         "toppower_utilization" => (
@@ -1086,17 +1111,48 @@ function rack_placement(
         end
     end
 
-    return Dict(
+    r = postprocess_results(
+        all_results,
+        batch_sizes,
+        DC, 
+        strategy,
+        with_precedence = with_precedence,
+        obj_minimize_rooms = obj_minimize_rooms,
+        obj_minimize_rows = obj_minimize_rows,
+        obj_minimize_tilegroups = obj_minimize_tilegroups,
+        obj_minimize_power_surplus = obj_minimize_power_surplus,
+        obj_minimize_power_balance = obj_minimize_power_balance,
+    )
+
+    optimality_gap_vals = r["iteration_data"][!, "optimality_gap"]
+    optimality_gap_max = maximum(optimality_gap_vals)
+    optimality_gap_mean = StatsBase.geomean(optimality_gap_vals .+ 1.0) - 1.0
+    
+    returnval = Dict(
         "x" => x_fixed,
         "y" => y_fixed,
         "u" => u_fixed,
         "time_taken" => time() - start_time,
-        "objective" => sum(
-            batches[t]["reward"][i] * y_fixed[(t,i,r)]
-            for (t, i, r) in keys(y_fixed)
-        ),
-        "all_results" => all_results,
+        "optimality_gap_max" => optimality_gap_max,
+        "optimality_gap_mean" => optimality_gap_mean,
+        "demands_placed" => r["demands_placed"],
+        "racks_placed" => r["racks_placed"],
+        "objective" => r["objective"],
+        "demands_placed_precedence" => r["demands_placed_precedence"],
+        "racks_placed_precedence" => r["racks_placed_precedence"],
+        "objective_precedence" => r["objective_precedence"],
+        "toppower_utilization" => r["toppower_utilization"],
+        "power_utilization" => all_results[end]["power"],
+        "failpower_utilization" => all_results[end]["failpower"],
+        "iteration_data" => r["iteration_data"],
+        "row_space_utilization_data" => r["row_space_utilization_data"],
+        "room_space_utilization_data" => r["room_space_utilization_data"],
+        "toppower_utilization_data" => r["toppower_utilization_data"],
     )
+    if obj_minimize_power_surplus || obj_minimize_power_balance
+        returnval["toppower_pair_utilization_data"] = r["toppower_pair_utilization_data"]
+    end
+    return returnval
 end
 
 function update_dynamic_parameters!(
@@ -1198,6 +1254,10 @@ function postprocess_results(
         Dict(k => [all_results[t][k] for t in 1:T]
         for k in keys_totake)
     )
+    row_space_utilization_data = DataFrame(Dict(
+        "$r" => sum([all_results[end]["space"][j] for j in DC.row_tilegroups_map[r]])
+        for r in DC.row_IDs
+    ))
     room_space_utilization_data = DataFrame(Dict(
         "$m" => [
             all_results[t]["room_space_utilizations"][m]
@@ -1214,6 +1274,7 @@ function postprocess_results(
     ))
     result = Dict(
         "iteration_data" => iteration_data,
+        "row_space_utilization_data" => row_space_utilization_data,
         "room_space_utilization_data" => room_space_utilization_data,
         "toppower_utilization_data" => toppower_utilization_data,
         "toppower_utilization" => (
@@ -1222,22 +1283,6 @@ function postprocess_results(
             sum(DC.power_capacity[p] for p in DC.toppower_IDs)
         ),
     )
-    result["demands_placed"] = sum(iteration_data[!, "demands_placed"])
-    result["racks_placed"] = sum(iteration_data[!, "racks_placed"])
-    result["objective"] = sum(iteration_data[!, "current_assignment"])
-    if with_precedence
-        first_ind_drop = T
-        for t in 1:T
-            if length(all_results[t]["y"]) < batch_sizes[t]
-                first_ind_drop = t
-                break
-            end
-        end
-        # Values until (and including)the first drop
-        result["demands_placed_precedence"] = sum(iteration_data[1:first_ind_drop, "demands_placed"])
-        result["racks_placed_precedence"] = sum(iteration_data[1:first_ind_drop, "racks_placed"])
-        result["objective_precedence"] = sum(iteration_data[1:first_ind_drop, "current_assignment"])
-    end
 
     if obj_minimize_power_surplus || obj_minimize_power_balance
         result["toppower_pair_utilization_data"] = DataFrame(Dict(
@@ -1249,5 +1294,22 @@ function postprocess_results(
                 for (p1, p2) in Tuple.(collect(combinations(DC.room_toppower_map[m], 2)))
         ))
     end
+
+    result["demands_placed"] = sum(iteration_data[!, "demands_placed"])
+    result["racks_placed"] = sum(iteration_data[!, "racks_placed"])
+    result["objective"] = sum(iteration_data[!, "current_assignment"])
+
+    first_ind_drop = T
+    for t in 1:T
+        if length(all_results[t]["y"]) < batch_sizes[t]
+            first_ind_drop = t
+            break
+        end
+    end
+    # Values until (and including) the first drop
+    result["demands_placed_precedence"] = sum(iteration_data[1:first_ind_drop, "demands_placed"])
+    result["racks_placed_precedence"] = sum(iteration_data[1:first_ind_drop, "racks_placed"])
+    result["objective_precedence"] = sum(iteration_data[1:first_ind_drop, "current_assignment"])
+
     return result
 end
