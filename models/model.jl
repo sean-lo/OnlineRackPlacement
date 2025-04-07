@@ -114,17 +114,17 @@ function rack_placement_oracle(
     optimize!(model)
     
     x_result = Dict(
-        (t, i, j) => round(JuMP.value(x[t,i,j]))
+        (t, i, j) => Int(round(JuMP.value(x[t,i,j])))
         for (t, i, j) in keys(x.data)
             if round(JuMP.value(x[t,i,j])) > 0
     )
     y_result = Dict(
-        (t, i, r) => round(JuMP.value(y[t,i,r]))
+        (t, i, r) => Int(round(JuMP.value(y[t,i,r])))
         for (t, i, r) in keys(y.data)
             if round(JuMP.value(y[t,i,r])) > 0
     )
     u_result = Dict(
-        (t, i) => round(JuMP.value(u[t,i]))
+        (t, i) => Int(round(JuMP.value(u[t,i])))
         for (t, i) in keys(u.data)
             if round(JuMP.value(u[t,i])) > 0
     )
