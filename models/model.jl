@@ -220,6 +220,7 @@ function build_solve_incremental_model(
     y_fixed::Dict{Tuple{Int, Int, Int}, Int},
     DC::DataCenter,
     t::Int,
+    T_end::Int,
     T::Int,
     batches::Vector{<:Dict{String, <:Array}},
     batch_sizes::Vector{Int},
@@ -272,13 +273,13 @@ function build_solve_incremental_model(
         @variable(model, Ω_now ≥ 0)
     end
     if strategy == "SAA"
-        @variable(model, x_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs] ≥ 0, Int)
-        @variable(model, y_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ], r in DC.row_IDs], Bin)
-        @variable(model, u_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ]], Bin)
+        @variable(model, x_next[τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs] ≥ 0, Int)
+        @variable(model, y_next[τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ], r in DC.row_IDs], Bin)
+        @variable(model, u_next[τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ]], Bin)
     elseif strategy in ["SSOA", "MPC"]
-        @variable(model, x_next[τ in t+1:T, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs] ≥ 0, Int)
-        @variable(model, y_next[τ in t+1:T, i in 1:batch_sizes[τ], r in DC.row_IDs], Bin)
-        @variable(model, u_next[τ in t+1:T, i in 1:batch_sizes[τ]], Bin)
+        @variable(model, x_next[τ in t+1:T_end, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs] ≥ 0, Int)
+        @variable(model, y_next[τ in t+1:T_end, i in 1:batch_sizes[τ], r in DC.row_IDs], Bin)
+        @variable(model, u_next[τ in t+1:T_end, i in 1:batch_sizes[τ]], Bin)
     end
 
     # Assignment
@@ -295,23 +296,23 @@ function build_solve_incremental_model(
     if strategy == "SAA"
         @constraint(
             model, 
-            [τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ]],
+            [τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ]],
             sum(y_next[τ,s,i,:]) == u_next[τ,s,i],
         )
         @constraint(
             model,
-            [τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ]],
+            [τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ]],
             u_next[τ,s,i] ≤ 1,
         )
     elseif strategy in ["SSOA", "MPC"]
         @constraint(
             model, 
-            [τ in t+1:T, i in 1:batch_sizes[τ]],
+            [τ in t+1:T_end, i in 1:batch_sizes[τ]],
             sum(y_next[τ,i,:]) == u_next[τ,i],
         )
         @constraint(
             model, 
-            [τ in t+1:T, i in 1:batch_sizes[τ]],
+            [τ in t+1:T_end, i in 1:batch_sizes[τ]],
             u_next[τ,i] ≤ 1,
         )
     end
@@ -326,14 +327,14 @@ function build_solve_incremental_model(
     if strategy == "SAA"
         @constraint(
             model, 
-            [τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ], r in DC.row_IDs], 
+            [τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ], r in DC.row_IDs], 
             sum(x_next[τ,s,i,j] for j in DC.row_tilegroups_map[r]) 
             == y_next[τ,s,i,r] * batches[t]["size"][i]
         )
     elseif strategy in ["SSOA", "MPC"]
         @constraint(
             model, 
-            [τ in t+1:T, i in 1:batch_sizes[τ], r in DC.row_IDs], 
+            [τ in t+1:T_end, i in 1:batch_sizes[τ], r in DC.row_IDs], 
             sum(x_next[τ,i,j] for j in DC.row_tilegroups_map[r]) 
             == y_next[τ,i,r] * batches[t]["size"][i]
         )
@@ -358,7 +359,7 @@ function build_solve_incremental_model(
             )
             @constraint(
                 model,
-                precedence_next[τ in t+1:T-1, s in 1:S, i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]],
+                precedence_next[τ in t+1:T_end-1, s in 1:S, i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]],
                 u_next[τ,s,i] ≥ u_next[τ+1,s,i_]
             )
         elseif strategy in ["SSOA", "MPC"] && t < T
@@ -369,8 +370,8 @@ function build_solve_incremental_model(
             )
             @constraint(
                 model,
-                # Only implement until τ = T-1
-                precedence_next[τ in t+1:T-1, i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]],
+                # Only implement until τ = T_end-1
+                precedence_next[τ in t+1:T_end-1, i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]],
                 u_next[τ,i] ≥ u_next[τ+1,i_]
             )
         end
@@ -396,7 +397,7 @@ function build_solve_incremental_model(
             space_next[j in DC.tilegroup_IDs, s in 1:S],
             sum(
                 x_next[(τ,s,i,j)]
-                for τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ]
+                for τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ]
             )
         )
         @constraint(
@@ -410,7 +411,7 @@ function build_solve_incremental_model(
             space_next[j in DC.tilegroup_IDs],
             sum(
                 x_next[(τ,i,j)]
-                for τ in t+1:T, i in 1:batch_sizes[τ]
+                for τ in t+1:T_end, i in 1:batch_sizes[τ]
             )
         )
         @constraint(
@@ -446,7 +447,7 @@ function build_solve_incremental_model(
             cooling_next[c in DC.cooling_IDs, s in 1:S],
             sum(
                 sim_batches[τ-t]["cooling"][s,i] * x_next[τ,s,i,j]
-                for τ in t+1:T, i in 1:batch_sizes[τ], j in DC.cooling_tilegroups_map[c]
+                for τ in t+1:T_end, i in 1:batch_sizes[τ], j in DC.cooling_tilegroups_map[c]
             )
         )
         @constraint(
@@ -460,7 +461,7 @@ function build_solve_incremental_model(
             cooling_next[c in DC.cooling_IDs],
             sum(
                 sim_batches[τ-t]["cooling"][i] * x_next[τ,i,j]
-                for τ in t+1:T, i in 1:batch_sizes[τ], j in DC.cooling_tilegroups_map[c]
+                for τ in t+1:T_end, i in 1:batch_sizes[τ], j in DC.cooling_tilegroups_map[c]
             )
         )
         @constraint(
@@ -496,7 +497,7 @@ function build_solve_incremental_model(
             power_next[p in DC.power_IDs, s in 1:S],
             sum(
                 (sim_batches[τ-t]["power"][s,i] / 2) * x_next[τ,s,i,j]
-                for τ in t+1:T, i in 1:batch_sizes[τ], j in DC.power_tilegroups_map[p]
+                for τ in t+1:T_end, i in 1:batch_sizes[τ], j in DC.power_tilegroups_map[p]
             )
         )
         @constraint(
@@ -510,7 +511,7 @@ function build_solve_incremental_model(
             power_next[p in DC.power_IDs],
             sum(
                 (sim_batches[τ-t]["power"][i] / 2) * x_next[τ,i,j]
-                for τ in t+1:T, i in 1:batch_sizes[τ], j in DC.power_tilegroups_map[p]
+                for τ in t+1:T_end, i in 1:batch_sizes[τ], j in DC.power_tilegroups_map[p]
             )
         )
         @constraint(
@@ -583,7 +584,7 @@ function build_solve_incremental_model(
                         for j in intersect(DC.power_tilegroups_map[p], DC.power_tilegroups_map[p_])
                     )
                 )
-                for τ in t+1:T, i in 1:batch_sizes[τ]
+                for τ in t+1:T_end, i in 1:batch_sizes[τ]
             )
         )
         @constraint(
@@ -615,7 +616,7 @@ function build_solve_incremental_model(
                         for j in intersect(DC.power_tilegroups_map[p], DC.power_tilegroups_map[p_])
                     )
                 )
-                for τ in t+1:T, i in 1:batch_sizes[τ]
+                for τ in t+1:T_end, i in 1:batch_sizes[τ]
             )
         )
         @constraint(
@@ -801,7 +802,7 @@ function build_solve_incremental_model(
             future_assignment,
             sum(
                 sim_batches[τ-t]["reward"][s,i] * y_next[τ,s,i,r]   
-                for τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ], r in DC.row_IDs
+                for τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ], r in DC.row_IDs
             ) / S
         )
     elseif strategy in ["SSOA", "MPC"]
@@ -810,7 +811,7 @@ function build_solve_incremental_model(
             future_assignment,
             sum(
                 sim_batches[τ-t]["reward"][i] * y_next[τ,i,r]   
-                for τ in t+1:T, i in 1:batch_sizes[τ], r in DC.row_IDs
+                for τ in t+1:T_end, i in 1:batch_sizes[τ], r in DC.row_IDs
             )
         )
     end
@@ -877,7 +878,7 @@ function build_solve_incremental_model(
     end
     if strategy in ["SAA"]
         results["x_next"] = Dict{Tuple{Int, Int, Int, Int}, Int}()
-        for τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs
+        for τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs
             val = round(JuMP.value(x_next[τ,s,i,j]))
             if val > 0
                 results["x_next"][(τ,s,i,j)] = val
@@ -885,7 +886,7 @@ function build_solve_incremental_model(
         end
         results["y_next"] = Dict{Tuple{Int, Int, Int, Int}, Int}()
         results["u_next"] = Dict{Tuple{Int, Int, Int}, Int}()
-        for τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ]
+        for τ in t+1:T_end, s in 1:S, i in 1:batch_sizes[τ]
             val = round(JuMP.value(u_next[τ,s,i]))
             if val > 0
                 results["u_next"][(τ,s,i)] = val
@@ -899,7 +900,7 @@ function build_solve_incremental_model(
         end
     elseif strategy in ["SSOA", "MPC"]
         results["x_next"] = Dict{Tuple{Int, Int, Int}, Int}()
-        for τ in t+1:T, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs
+        for τ in t+1:T_end, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs
             val = round(JuMP.value(x_next[τ,i,j]))
             if val > 0
                 results["x_next"][(τ,i,j)] = val
@@ -907,7 +908,7 @@ function build_solve_incremental_model(
         end
         results["y_next"] = Dict{Tuple{Int, Int, Int}, Int}()
         results["u_next"] = Dict{Tuple{Int, Int}, Int}()
-        for τ in t+1:T, i in 1:batch_sizes[τ]
+        for τ in t+1:T_end, i in 1:batch_sizes[τ]
             val = round(JuMP.value(u_next[τ,i]))
             if val > 0
                 results["u_next"][(τ,i)] = val
@@ -928,7 +929,7 @@ function build_solve_incremental_model(
             )
             results["precedence_next"] = Dict(
                 (τ, s, i, i_) => JuMP.value(precedence_next[τ, s, i, i_])
-                for τ in t+1:T-1, s in 1:S
+                for τ in t+1:T_end-1, s in 1:S
                     for i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]
             )
         elseif strategy in ["SSOA", "MPC"]
@@ -938,7 +939,7 @@ function build_solve_incremental_model(
             )
             results["precedence_next"] = Dict(
                 (τ, i, i_) => JuMP.value(precedence_next[τ, i, i_])
-                for τ in t+1:T-1
+                for τ in t+1:T_end-1
                     for i in 1:batch_sizes[τ], i_ in 1:batch_sizes[τ+1]
             )
         end
@@ -981,6 +982,7 @@ function rack_placement(
     all_sim_batches::Union{Vector{<:Vector{<:Dict{String, <:Array}}}, Nothing} = nothing,
     env::Union{Gurobi.Env, Nothing} = nothing,
     strategy::String = "SSOA",
+    num_future_periods::Int = length(batches),
     S::Int = 1, # Number of sample paths
     seed::Union{Int, Nothing} = nothing,
     with_precedence::Bool = false,
@@ -1043,13 +1045,16 @@ function rack_placement(
             sim_batches = nothing
         end
 
+        # Limited SSOA
+        T_end = min(t + num_future_periods, T)
+
         # Optimize incremental model
         results = build_solve_incremental_model(
             x_fixed,
             y_fixed,
             DC,
             t,
-            T,
+            T_end, T,
             batches,
             batch_sizes,
             strategy,

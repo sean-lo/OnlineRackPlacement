@@ -32,6 +32,7 @@ function run_experiment(
     env::Union{Gurobi.Env, Nothing} = nothing,
     use_batching::Bool = false,
     batch_size::Int = CONST_BATCH_SIZE,
+    lookahead_horizon::Union{Int, Nothing} = nothing,
     interpolate_power::Bool = true,
     interpolate_cooling::Bool = true,
     with_precedence::Bool = false,
@@ -91,6 +92,11 @@ function run_experiment(
         RCoeffs.placement_reward, RCoeffs.placement_var_reward, 
         use_batching, batch_size,
     )
+    if !isnothing(lookahead_horizon)
+        num_future_periods = lookahead_horizon
+    else
+        num_future_periods = length(batches)
+    end
 
     verbose && println("Created batches and simulator.")
     
@@ -108,6 +114,7 @@ function run_experiment(
             DC, Sim, RCoeffs, batches, batch_sizes, 
             env = env,
             strategy = "myopic",
+            num_future_periods = num_future_periods,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             with_precedence = with_precedence,
             obj_minimize_rooms = obj_minimize_rooms,
@@ -133,6 +140,7 @@ function run_experiment(
             DC, Sim, RCoeffs, batches, batch_sizes, 
             env = env,
             strategy = "MPC",
+            num_future_periods = num_future_periods,
             all_sim_batches = all_sim_batches,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             with_precedence = with_precedence,
@@ -160,6 +168,7 @@ function run_experiment(
             DC, Sim, RCoeffs, batches, batch_sizes, 
             env = env,
             strategy = "SSOA", S = 1, 
+            num_future_periods = num_future_periods,
             all_sim_batches = all_sim_batches,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             with_precedence = with_precedence,
@@ -187,6 +196,7 @@ function run_experiment(
             DC, Sim, RCoeffs, batches, batch_sizes, 
             env = env,
             strategy = "SAA", S = S, 
+            num_future_periods = num_future_periods,
             all_sim_batches = all_sim_batches,
             time_limit_sec_per_iteration = time_limit_sec_per_iteration,
             with_precedence = with_precedence,
