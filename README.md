@@ -2,6 +2,8 @@
 
 This repository documents code for the paper: "Online Rack Placement in Large-Scale Data Centers: Online Sampling Optimization and Deployment", found [here](https://arxiv.org/abs/2501.12725).
 
+The previous version of this code is found [here](https://github.com/kscummings/RackPlacement).
+
 ## Directory structure
 
 Under `models/model.jl`, we define:
