@@ -54,6 +54,7 @@ function run_experiment(
     seed::Int = 0,
     time_limit_sec_per_iteration = 300,
     MIPGap::Float64 = 1e-4,
+    num_threads::Int = 0, # default
     test_run::Bool = false,
     verbose::Bool = false,
     write::Bool = true,
@@ -112,6 +113,7 @@ function run_experiment(
             with_precedence = with_precedence,
             time_limit_sec = time_limit_sec_per_iteration,
             MIPGap = MIPGap,
+            num_threads = num_threads,
         )
     elseif strategy == "myopic"
         result = rack_placement(
@@ -127,6 +129,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            num_threads = num_threads,
             verbose = verbose,
             test_run = test_run,
         )
@@ -154,6 +157,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            num_threads = num_threads,
             verbose = verbose,
             test_run = test_run,
         )
@@ -182,6 +186,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            num_threads = num_threads,
             verbose = verbose,
             test_run = test_run,
         )
@@ -210,6 +215,7 @@ function run_experiment(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            num_threads = num_threads,
             verbose = verbose,
             test_run = test_run,
         )

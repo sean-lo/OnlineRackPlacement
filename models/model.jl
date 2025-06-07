@@ -7,6 +7,7 @@ function rack_placement_oracle(
     with_precedence::Bool = false,
     time_limit_sec = 300,
     MIPGap::Float64 = 1e-4,
+    num_threads::Int = 0, # default
 )
     if isnothing(env)
         env = Gurobi.Env()
@@ -17,6 +18,7 @@ function rack_placement_oracle(
 
     model = Model(() -> Gurobi.Optimizer(env))
     set_optimizer_attribute(model, "MIPGap", MIPGap)
+    set_optimizer_attribute(model, "Threads", num_threads)
     set_time_limit_sec(model, time_limit_sec)
 
     @variable(model, x[t in 1:T, i in 1:batch_sizes[t], j in DC.tilegroup_IDs] ≥ 0, Int)
@@ -55,14 +57,14 @@ function rack_placement_oracle(
     # Space
     @constraint(
         model,
-        [j in DC.tilegroup_IDs],
+        space[j in DC.tilegroup_IDs],
         sum(x[t,i,j] for t in 1:T, i in 1:batch_sizes[t])
         ≤ DC.tilegroup_space_capacity[j]
     )
     # Cooling
     @constraint(
         model, 
-        [c in DC.cooling_IDs],
+        cooling[c in DC.cooling_IDs],
         sum(
             batches[t]["cooling"][i] * x[t,i,j]
             for t in 1:T, i in 1:batch_sizes[t], j in DC.cooling_tilegroups_map[c]
@@ -147,6 +149,10 @@ function rack_placement_oracle(
         "racks_placed" => sum(values(x_result)),
         "objective" => JuMP.objective_value(model),
         "toppower_utilization" => r["toppower_utilization"],
+        "cooling_utilization" => Dict(
+            c => JuMP.value(cooling[c])
+            for c in DC.cooling_IDs
+        ),
         "power_utilization" => Dict(
             p => JuMP.value(power[p]) 
             for p in DC.power_IDs
@@ -184,9 +190,10 @@ function postprocess_results_oracle(
     room_space_utilization_data = DataFrame(Dict(
         "$m" => [
             sum(
-                x_result[(t,i,j)]
+                [x_result[(t,i,j)]
                 for (t,i,j) in keys(x_result)
-                    if j in DC.room_tilegroups_map[m]
+                    if j in DC.room_tilegroups_map[m]],
+                init=0.0,
             )
         ]
         for m in DC.room_IDs
@@ -194,9 +201,10 @@ function postprocess_results_oracle(
     toppower_utilization_data = DataFrame(Dict(
         "$p" => [
             sum(
-                (batches[t]["power"][i] / 2) * x_result[(t,i,j)]
+                [(batches[t]["power"][i] / 2) * x_result[(t,i,j)]
                 for (t,i,j) in keys(x_result)
-                    if j in DC.power_tilegroups_map[p]
+                    if j in DC.power_tilegroups_map[p]],
+                init=0.0,
             )
         ] 
         for p in DC.toppower_IDs
@@ -238,6 +246,7 @@ function build_solve_incremental_model(
     obj_minimize_power_surplus::Bool = true,
     obj_minimize_power_balance::Bool = true,
     MIPGap::Float64 = 1e-4,
+    num_threads::Int = 0, # default
     time_limit_sec = 300,
     verbose::Bool = false,
 )
@@ -252,6 +261,7 @@ function build_solve_incremental_model(
     model = Model(() -> Gurobi.Optimizer(env))
     set_optimizer_attribute(model, "MIPGap", MIPGap)
     set_time_limit_sec(model, time_limit_sec)
+    set_optimizer_attribute(model, "Threads", num_threads)
 
     @variable(model, x_now[i in 1:batch_sizes[t], j in DC.tilegroup_IDs] ≥ 0, Int)
     @variable(model, y_now[i in 1:batch_sizes[t], r in DC.row_IDs], Bin)
@@ -823,6 +833,7 @@ function build_solve_incremental_model(
     end
 
     verbose && println("Optimizing model...")
+    flush(stdout)
     
     optimize!(model)
     
@@ -992,6 +1003,7 @@ function rack_placement(
     obj_minimize_power_surplus::Bool = true,
     obj_minimize_power_balance::Bool = true,
     MIPGap::Float64 = 1e-4,
+    num_threads::Int = 0, # default
     time_limit_sec = 0,
     time_limit_sec_per_iteration = 60,
     verbose::Bool = true,
@@ -1070,6 +1082,7 @@ function rack_placement(
             obj_minimize_power_surplus = obj_minimize_power_surplus,
             obj_minimize_power_balance = obj_minimize_power_balance,
             MIPGap = MIPGap,
+            num_threads = num_threads,
             time_limit_sec = max(
                 time_limit_sec_per_iteration,
                 time_limit_sec - (time() - start_time),
@@ -1082,7 +1095,7 @@ function rack_placement(
         if verbose
             println("--------------------------------")
             println("Iteration $t of $T completed in $(results["time_taken"]) s.")
-            println("Placed $(length(results["x"])) new demands ($(length(x_fixed)) total).")
+            println("Placed $(length(results["y"])) new demands ($(length(y_fixed)) total).")
             println("Current assignment:  $(results["current_assignment"])")
             if strategy in ["SSOA", "SAA", "MPC"]
                 println("Future assignment:   $(results["future_assignment"])")
@@ -1104,6 +1117,7 @@ function rack_placement(
             end
             println("--------------------------------")
         end
+        flush(stdout)
         
         # Compute metrics for current iteration
         update_metrics!(DC, results)
@@ -1149,6 +1163,7 @@ function rack_placement(
         "toppower_utilization" => r["toppower_utilization"],
         "power_utilization" => all_results[end]["power"],
         "failpower_utilization" => all_results[end]["failpower"],
+        "cooling_utilization" => all_results[end]["cooling"],
         "iteration_data" => r["iteration_data"],
         "row_space_utilization_data" => r["row_space_utilization_data"],
         "room_space_utilization_data" => r["room_space_utilization_data"],
