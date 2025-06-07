@@ -77,6 +77,14 @@ end
 
 function read_datacenter(
     input_dir::String,
+    ;
+    toppower_capacity::Union{Nothing, Float64} = nothing,
+    midpower_capacity::Union{Nothing, Float64} = nothing,
+    lowpower_capacity::Union{Nothing, Float64} = nothing,
+    failtoppower_scale::Union{Nothing, Float64} = nothing,
+    failmidpower_scale::Union{Nothing, Float64} = nothing,
+    faillowpower_scale::Union{Nothing, Float64} = nothing,
+    cooling_capacity::Union{Nothing, Float64} = nothing,
 )
 
     data = read_CSVs_from_dir(input_dir)
@@ -286,6 +294,39 @@ function read_datacenter(
             x[!, :objectID] .=> x[!, :capacity]
         )
     )
+
+    if !isnothing(toppower_capacity)
+        for p in toppower_IDs
+            power_capacity[p] = toppower_capacity
+        end
+    end
+    if !isnothing(midpower_capacity)
+        for p in midpower_IDs
+            power_capacity[p] = midpower_capacity
+        end
+    end
+    if !isnothing(lowpower_capacity)
+        for p in lowpower_IDs
+            power_capacity[p] = lowpower_capacity
+        end
+    end
+
+    if !isnothing(failtoppower_scale)
+        for p in toppower_IDs
+            failpower_capacity[p] = failtoppower_scale * power_capacity[p]
+        end
+    end
+    if !isnothing(failmidpower_scale)
+        for p in midpower_IDs
+            failpower_capacity[p] = failmidpower_scale * power_capacity[p]
+        end
+    end
+    if !isnothing(faillowpower_scale)
+        for p in lowpower_IDs
+            failpower_capacity[p] = faillowpower_scale * power_capacity[p]
+        end
+    end
+
     power_balanced_capacity = Dict(
         m => (
             (sum(power_capacity[p] for p in room_toppower_map[m]) * 2) 
@@ -294,13 +335,20 @@ function read_datacenter(
         for m in room_IDs
     )
 
-    cooling_capacity = (
-        data["objectCapacities"]
-        |> x -> filter(r -> r[:objectType] == "cz", x)
-        |> x -> Dict(
-            x[!, :objectID] .=> x[!, :capacity]
+    if !isnothing(cooling_capacity)
+        cooling_capacity = Dict(
+            c => cooling_capacity
+            for c in cooling_IDs
         )
-    )
+    else
+        cooling_capacity = (
+            data["objectCapacities"]
+            |> x -> filter(r -> r[:objectType] == "cz", x)
+            |> x -> Dict(
+                x[!, :objectID] .=> x[!, :capacity]
+            )
+        )
+    end
 
     return DataCenter(
         room_IDs, row_IDs, power_IDs, cooling_IDs, tilegroup_IDs, 
