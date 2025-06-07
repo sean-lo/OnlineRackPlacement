@@ -80,7 +80,11 @@ function run_experiment(
             build_datacenter_kwargs...,
         )
     else
-        DC = read_datacenter(datacenter_dir)
+        DC = read_datacenter(
+            datacenter_dir,
+            ;
+            build_datacenter_kwargs...,
+        )
     end
     Sim = HistoricalDemandSimulator(
         distr_dir,
