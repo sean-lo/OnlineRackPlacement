@@ -28,18 +28,16 @@ include("$(@__DIR__)/experiment.jl")
 # fps = JSON.parsefile("$(@__DIR__)/../filepaths.json")
 fps = JSON.parsefile("$(@__DIR__)/../new_filepaths.json")
 # fps = JSON.parsefile("$(@__DIR__)/new_filepaths.json")
-# datacenter_dir = fps["datacenter_dir"]
+datacenter_dir = fps["datacenter_dir"]
 demand_fps = fps["demand_fps"]
 run_ind = 1
 distr_dir = fps["distr_dir"]
 demand_fp = demand_fps[run_ind]
 ### 
 
-include("$(@__DIR__)/experiment.jl")
-
 # Parameters
 use_batching = false
-batch_size = 10
+batch_size = 1
 (
     obj_minimize_rooms, 
     obj_minimize_rows, 
@@ -54,8 +52,8 @@ batch_size = 10
 #     obj_minimize_power_surplus, 
 #     obj_minimize_power_balance,
 # ) = (false, false, false, false, false)
-discount_factor = 0.1
-with_precedence = false
+discount_factor = 1.0
+with_precedence = true
 interpolate_power = false
 interpolate_cooling = false
 placement_reward = 200.0
@@ -66,7 +64,7 @@ tilegroup_penalty = 0.0
 power_surplus_penalty = 1e-3
 power_balance_penalty = 1e-5
 MIPGap = 1e-2
-time_limit_sec_per_iteration = 600
+time_limit_sec_per_iteration = 30
 test_run = false
 verbose = true
 result_dir = "$(@__DIR__)/results/"
@@ -77,6 +75,74 @@ Sim = HistoricalDemandSimulator(
     interpolate_power = interpolate_power,
     interpolate_cooling = interpolate_cooling,
 )
+
+batches, batch_sizes = read_demand(
+    demand_fp, placement_reward, placement_var_reward,
+    use_batching, batch_size,
+)
+cooling_vals = vcat(
+    [batches[t]["cooling"] .* batches[t]["size"] for t in 1:length(batches)]...
+)
+Plots.histogram(
+    cooling_vals,
+    bins = 0:1000:50000,
+)
+
+oracle_result = run_experiment(
+    distr_dir,
+    demand_fp,
+    joinpath(result_dir, "oracle"),
+    ;
+    datacenter_dir = datacenter_dir,
+    use_batching = use_batching,
+    batch_size = batch_size,
+    interpolate_power = interpolate_power,
+    interpolate_cooling = interpolate_cooling,
+    with_precedence = with_precedence,
+    placement_reward = placement_reward,
+    placement_var_reward = placement_var_reward,
+    strategy = "oracle",
+    obj_minimize_rooms = obj_minimize_rooms,
+    obj_minimize_rows = obj_minimize_rows,
+    obj_minimize_tilegroups = obj_minimize_tilegroups,
+    obj_minimize_power_surplus = obj_minimize_power_surplus,
+    obj_minimize_power_balance = obj_minimize_power_balance,
+    room_mult = room_mult,
+    row_mult = row_mult,
+    tilegroup_penalty = tilegroup_penalty,
+    power_surplus_penalty = power_surplus_penalty,
+    power_balance_penalty = power_balance_penalty,
+    discount_factor = discount_factor,
+    S = 1,
+    seed = 1,
+    time_limit_sec_per_iteration = 60.0,
+    MIPGap = MIPGap,
+    num_threads = 2,
+    test_run = test_run,
+    verbose = verbose,
+    write = true,
+    cooling_capacity = 4e4,
+)
+
+DC = read_datacenter(datacenter_dir)
+DC.power_capacity |> values |> unique
+
+demand_fp
+batches, batch_sizes = read_demand(demand_fp, placement_reward, placement_var_reward, use_batching, batch_size)
+[x["power"][1] * x["size"][1] for x in batches] |> maximum
+[k for k in keys(oracle_result["y"]) if k[1] == 1]
+DC.row_tilegroups_map[12]
+[k for k in keys(oracle_result["x"]) if k[1] == 1]
+[
+    p for p in DC.power_IDs if 28 in DC.power_tilegroups_map[p]
+]
+DC.power_tilegroups_map[77]
+DC.power_tilegroups_map[92]
+DC.power_capacity[77]
+DC.power_capacity[92]
+oracle_result["power_utilization"][77]
+oracle_result["power_utilization"][92]
+
 
 MPC_result = run_experiment(
     distr_dir,
@@ -110,10 +176,21 @@ MPC_result = run_experiment(
     toppower_capacity = 9e5,
     midpower_capacity = 9e5 / 5,
     lowpower_capacity = 9e5 / (5 * 2),
+    cooling_capacity = 40000.0,
 )
 MPC_result["objective"]
-MPC_result["power_utilization"]
+MPC_result["objective_precedence"]
 
+
+# MPC_result["objective_precedence"]
+MPC_result["power_utilization"]
+MPC_result["cooling_utilization"]
+
+Plots.histogram(
+    MPC_result["cooling_utilization"] |> values |> collect,
+    # bins=0:1:21
+    bins = 0:2000:50000,
+)
 
 Plots.histogram(
     MPC_result["row_space_utilization_data"] |> Matrix |> vec,
@@ -152,9 +229,9 @@ MPC_result["failpower_utilization"]
 
 all_results = Dict{String, Any}()
 all_results["SSOA_objective"] = Float64[]
-all_results["SSOA_objective_precedence"] = Float64[]
+# all_results["SSOA_objective_precedence"] = Float64[]
 all_results["MPC_objective"] = Float64[]
-all_results["MPC_objective_precedence"] = Float64[]
+# all_results["MPC_objective_precedence"] = Float64[]
 
 push!(all_results["MPC_objective"], MPC_result["objective"])
 # push!(all_results["MPC_objective_precedence"], MPC_result["objective_precedence"])
@@ -194,6 +271,7 @@ for seed in 1:5
         toppower_capacity = 9e5,
         midpower_capacity = 9e5 / 5,
         lowpower_capacity = 9e5 / (5 * 2),
+        cooling_capacity = 30000.0,
     ) 
     push!(all_results["SSOA_objective"], SSOA_result["objective"])
     # push!(all_results["SSOA_objective_precedence"], SSOA_result["objective_precedence"])
@@ -325,239 +403,3 @@ all_results_noprecedence["MPC_objective"]
 
 
 
-
-
-RCoeffs = RackPlacementCoefficients(
-    # placement_reward = 0.0,
-    # placement_var_reward = 20.0,
-    discount_factor = discount_factor,
-)
-# DC = read_datacenter(datacenter_dir)
-DC = build_datacenter()
-Sim = HistoricalDemandSimulator(distr_dir, interpolate_power = false, interpolate_cooling = false)
-batches, batch_sizes = read_demand(
-    demand_fp, RCoeffs.placement_reward, RCoeffs.placement_var_reward,
-    false, 10,
-)
-
-oracle_result = rack_placement_oracle(
-    batches, batch_sizes, DC, 
-    MIPGap = 1e-3,
-    time_limit_sec = 300,
-)
-oracle_result["objective"]
-oracle_precedence_result = rack_placement_oracle(
-    batches, batch_sizes, DC, 
-    # time_limit_sec = 30,
-    MIPGap = 1e-3,
-    with_precedence = true,
-)
-oracle_precedence_result["objective"]
-
-SSOA_precedence_result = rack_placement(
-    DC, Sim, RCoeffs, batches, batch_sizes, strategy = "SSOA", S = 1, seed = 2,
-    MIPGap = 1e-3,
-    time_limit_sec_per_iteration = 10,
-    with_precedence = true,
-    obj_minimize_rooms = false,
-    obj_minimize_rows = true,
-    obj_minimize_tilegroups = false,
-    obj_minimize_power_surplus = true,
-    obj_minimize_power_balance = true,
-)
-SSOA_precedence_result["objective"]
-SSOA_precedence_r = postprocess_results(
-    SSOA_precedence_result["all_results"], batch_sizes, DC, "SSOA"; 
-    with_precedence = true,
-    obj_minimize_rooms = false,
-    obj_minimize_rows = true,
-    obj_minimize_tilegroups = false,
-    obj_minimize_power_surplus = true,
-    obj_minimize_power_balance = true,
-)
-SSOA_precedence_r["objective_precedence"]
-
-
-[SSOA_precedence_result["all_results"][end]["power"][i] for i in DC.toppower_IDs]
-[SSOA_precedence_result["all_results"][end]["power"][i] for i in 29:100] |> mean
-
-using Plots
-
-Plots.histogram(
-    [SSOA_precedence_result["all_results"][end]["cooling"][i] for i in DC.cooling_IDs],
-    bins = 100,
-)
-Plots.histogram(
-    [SSOA_precedence_result["all_results"][end]["space"][i] for i in DC.tilegroup_IDs],
-)
-
-Plots.histogram(
-    [
-        sum([SSOA_precedence_result["all_results"][end]["space"][j] for j in DC.row_tilegroups_map[r]])
-        for r in DC.row_IDs
-    ],
-    bins=21,
-)
-
-
-
-MPC_precedence_result = rack_placement(
-    DC, Sim, RCoeffs, batches, batch_sizes, strategy = "MPC", S = 1, seed = 0,
-    MIPGap = 1e-3,
-    time_limit_sec_per_iteration = 10,
-    with_precedence = true,
-    obj_minimize_rooms = false,
-    obj_minimize_rows = true,
-    obj_minimize_tilegroups = false,
-    obj_minimize_power_surplus = true,
-    obj_minimize_power_balance = true,
-)
-MPC_precedence_result["objective"]
-
-MPC_precedence_r = postprocess_results(
-    MPC_precedence_result["all_results"], batch_sizes, DC, "MPC"; 
-    with_precedence = true,
-    obj_minimize_rooms = false,
-    obj_minimize_rows = true,
-    obj_minimize_tilegroups = false,
-    obj_minimize_power_surplus = true,
-    obj_minimize_power_balance = true,
-)
-MPC_precedence_r["objective_precedence"]
-
-simulate_batches("MPC", Sim, RCoeffs.placement_reward, RCoeffs.placement_var_reward, 1, length(batch_sizes), batch_sizes, S = 1, seed = 0)
-mean_demand(Sim, RCoeffs.placement_reward, RCoeffs.placement_var_reward, 1)
-
-distr_data = read_CSVs_from_dir(distr_dir)
-sort!(distr_data["size"], [:size])
-size_quantiles = cumsum(distr_data["size"][!, "frequency"])
-size_quantiles = round.(size_quantiles, digits = 4)
-size_quantiles[end] = 1.0
-size_mean = sum(distr_data["size"][!, "size"] .* distr_data["size"][!, "frequency"])
-
-
-
-Sim.size_mean
-
-SSOA_result["time_taken"][end]
-SAA_result["time_taken"][end]
-MPC_result["time_taken"][end]
-
-
-
-include("$(@__DIR__)/model.jl")
-
-strategy = "SSOA"
-S = 1
-time_limit_sec_per_iteration = 20
-time_limit_sec = 0
-start_time = time()
-env = Gurobi.Env()
-MIPGap = 1e-4
-with_precedence = true
-obj_minimize_rooms = false
-obj_minimize_rows = true
-obj_minimize_tilegroups = false
-obj_minimize_power_surplus = true
-obj_minimize_power_balance = true
-
-
-RCoeffsD = RackPlacementCoefficientsDynamic(RCoeffs)
-RCoeffsD.row_penalties = Dict(r => RCoeffs.row_penalty for r in DC.row_IDs)
-RCoeffsD.room_penalties = Dict(m => RCoeffs.room_penalty for m in DC.room_IDs)
-RCoeffsD.room_penalties[first(DC.room_IDs)] = 0.0
-T = length(batches)
-
-all_results = Dict{String, Any}[]
-x_fixed = Dict{Tuple{Int, Int, Int}, Int}()
-y_fixed = Dict{Tuple{Int, Int, Int}, Int}()
-u_fixed = Dict{Tuple{Int, Int}, Int}()
-
-t = 1
-
-
-sim_batches = simulate_batches(
-    strategy, Sim, 
-    RCoeffsD.placement_reward,
-    RCoeffsD.placement_var_reward,
-    t, T,
-    batch_sizes,
-    ;
-    S = S,
-    seed = 0,
-)
-results = build_solve_incremental_model(
-    x_fixed,
-    y_fixed,
-    DC,
-    t,
-    T,
-    batches,
-    batch_sizes,
-    strategy,
-    RCoeffsD,
-    sim_batches = sim_batches,
-    S = S,
-    env = env,
-    with_precedence = with_precedence,
-    u_fixed = u_fixed,
-    obj_minimize_rooms = obj_minimize_rooms,
-    obj_minimize_rows = obj_minimize_rows,
-    obj_minimize_tilegroups = obj_minimize_tilegroups,
-    obj_minimize_power_surplus = obj_minimize_power_surplus,
-    obj_minimize_power_balance = obj_minimize_power_balance,
-    MIPGap = MIPGap,
-    time_limit_sec = max(
-        time_limit_sec_per_iteration,
-        time_limit_sec - (time() - start_time),
-    )
-)
-
-results["u"]
-results["current_assignment"]
-results["u_next"]
-
-
-
-
-
-
-
-model = Model(() -> Gurobi.Optimizer(env))
-set_optimizer_attribute(model, "MIPGap", MIPGap)
-set_time_limit_sec(model, time_limit_sec)
-
-@variable(model, x_now[i in 1:batch_sizes[t], j in DC.tilegroup_IDs] ≥ 0, Int)
-@variable(model, y_now[i in 1:batch_sizes[t], r in DC.row_IDs], Bin)
-@variable(model, u_now[i in 1:batch_sizes[t]], Bin)
-if obj_minimize_rooms
-    @variable(model, w_now[i in 1:batch_sizes[t], m in DC.room_IDs], Bin)
-end
-if obj_minimize_rows
-    @variable(model, z_now[r in DC.row_IDs], Bin)
-end
-if obj_minimize_tilegroups
-    @variable(model, v_now[i in 1:batch_sizes[t], j in DC.tilegroup_IDs], Bin)
-end
-if obj_minimize_power_surplus
-    @variable(model, Φ_now ≥ 0)
-end
-if obj_minimize_power_balance
-    @variable(model, Ψ_now ≥ 0)
-    @variable(model, Ω_now ≥ 0)
-end
-if strategy == "SAA"
-    @variable(model, x_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs] ≥ 0, Int)
-    @variable(model, y_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ], r in DC.row_IDs], Bin)
-    @variable(model, u_next[τ in t+1:T, s in 1:S, i in 1:batch_sizes[τ]], Bin)
-elseif strategy in ["SSOA", "MPC"]
-    @variable(model, x_next[τ in t+1:T, i in 1:batch_sizes[τ], j in DC.tilegroup_IDs] ≥ 0, Int)
-    @variable(model, y_next[τ in t+1:T, i in 1:batch_sizes[τ], r in DC.row_IDs], Bin)
-    @variable(model, u_next[τ in t+1:T, i in 1:batch_sizes[τ]], Bin)
-end
-
-@constraint(
-    model, 
-    [i in 1:batch_sizes[t]], 
-    sum(y_now[i,:]) ≤ 1,
-)
